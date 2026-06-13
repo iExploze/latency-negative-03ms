@@ -38,6 +38,7 @@ let mismatchEvent: MismatchEvent | null = null
 let lastMismatchAt = -Infinity
 let predictionEvent: PredictionEvent | null = null
 let predictionTriggeredForPhase = false
+let predictionRecoveryUntil = 0
 let finalCompleteShown = false
 
 type MismatchEvent = {
@@ -69,8 +70,8 @@ const HAND_CLIP_NAME = 'calibrationHandRaise'
 const HAND_CLIP_MAX_FRAMES = 70
 const HAND_CAPTURE_START_MS = debugMode ? 5_000 : 30_000
 const HAND_CAPTURE_END_MS = debugMode ? 6_350 : 38_000
-const PREDICTION_EVENT_DURATION_MS = 1650
-const PREDICTION_FREEZE_MS = 180
+const PREDICTION_EVENT_DURATION_MS = 3200
+const PREDICTION_FREEZE_MS = 150
 const PREDICTION_CLIP_LOOKBACK_MS = 16_000
 const PREDICTION_CLIP_SPEED = 1.9
 
@@ -109,6 +110,7 @@ async function beginTest(): Promise<void> {
     mismatchEvent = null
     predictionEvent = null
     predictionTriggeredForPhase = false
+    predictionRecoveryUntil = 0
     finalCompleteShown = false
     lastMismatchAt = -Infinity
     hasStarted = true
@@ -130,6 +132,7 @@ function exitTest(): void {
   mismatchEvent = null
   predictionEvent = null
   predictionTriggeredForPhase = false
+  predictionRecoveryUntil = 0
   finalCompleteShown = false
   phaseManager.terminate(performance.now())
   hasStarted = false
@@ -191,6 +194,7 @@ function startLoop(): void {
     const source = predictionFrame ?? mismatchFrame ?? transferFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
     const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : transferFrame ? 'transfer' : delayedFrame ? 'delayed' : 'live'
     const predictionEventActive = predictionEvent !== null
+    const predictionVisualActive = predictionEventActive || nowMs < predictionRecoveryUntil
     const liveState = getLiveState(snapshot.id, snapshot.elapsedMs, nowMs)
 
     renderer.render({
@@ -198,7 +202,7 @@ function startLoop(): void {
       phase: snapshot,
       timestampMs: nowMs,
       mismatchActive: mismatchEvent !== null,
-      predictionActive: predictionEventActive,
+      predictionActive: predictionVisualActive,
       extraHorizontalFlip: predictionUsesExtraFlip,
     })
     ui.updateHud(snapshot, liveState.label)
@@ -228,7 +232,7 @@ function startLoop(): void {
       finalEndActive: snapshot.id === 'finalEnd',
       stillnessTriggerMs: STILLNESS_TRIGGER_MS,
       mismatchDurationMs: MISMATCH_EVENT_DURATION_MS,
-      jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null || predictionEventActive),
+      jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null || predictionVisualActive),
     })
 
     if (hasStarted) {
@@ -258,6 +262,9 @@ function closeMirror(): void {
   frameBuffer.clear()
   motionDetector.reset()
   dialogueManager.reset()
+  predictionEvent = null
+  predictionTriggeredForPhase = false
+  predictionRecoveryUntil = 0
   phaseManager.closeMirror(performance.now())
   ui.showWrongSide()
   debugManager.clear()
@@ -296,11 +303,13 @@ function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: n
   if (phaseId !== 'negativeLatency') {
     predictionEvent = null
     predictionTriggeredForPhase = false
+    predictionRecoveryUntil = 0
     return
   }
 
   if (predictionEvent && nowMs - predictionEvent.startedAt >= predictionEvent.durationMs) {
     predictionEvent = null
+    predictionRecoveryUntil = nowMs + 420
   }
 
   const predictionCueAt = debugMode ? 3_200 : 8_000
@@ -314,6 +323,7 @@ function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: n
 
   const source = getAvailablePredictionSource()
   predictionTriggeredForPhase = true
+  predictionRecoveryUntil = 0
   predictionEvent = {
     startedAt: nowMs,
     durationMs: PREDICTION_EVENT_DURATION_MS,

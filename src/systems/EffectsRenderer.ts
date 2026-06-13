@@ -106,12 +106,41 @@ export class EffectsRenderer {
     const x = (width - drawWidth) / 2 + jitter.x
     const y = (height - drawHeight) / 2 + jitter.y
 
+    if (options.extraHorizontalFlip) {
+      this.drawSourcePass(drawableSource, width, x, y, drawWidth, drawHeight, true, 0.52)
+      this.drawSourcePass(
+        drawableSource,
+        width,
+        x + Math.sin(options.timestampMs * 0.018) * 2.2,
+        y,
+        drawWidth,
+        drawHeight,
+        false,
+        0.78,
+      )
+      return
+    }
+
+    this.drawSourcePass(drawableSource, width, x, y, drawWidth, drawHeight, true, 1)
+  }
+
+  private drawSourcePass(
+    source: CanvasImageSource,
+    canvasWidth: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    mirrored: boolean,
+    alpha: number,
+  ): void {
     this.context.save()
-    if (!options.extraHorizontalFlip) {
-      this.context.translate(width, 0)
+    this.context.globalAlpha = alpha
+    if (mirrored) {
+      this.context.translate(canvasWidth, 0)
       this.context.scale(-1, 1)
     }
-    this.context.drawImage(drawableSource, x, y, drawWidth, drawHeight)
+    this.context.drawImage(source, x, y, width, height)
     this.context.restore()
   }
 
