@@ -1,3 +1,4 @@
+import type { DialogueChoice, DialogueSnapshot } from './DialogueManager'
 import type { DiagnosticReadouts, PhaseSnapshot } from './PhaseManager'
 
 type UIElements = {
@@ -16,6 +17,8 @@ type UIElements = {
   timer: HTMLElement
   phaseLabel: HTMLElement
   prompt: HTMLElement
+  dialogue: HTMLElement
+  choices: HTMLElement
   diagnostics: HTMLElement
   debugOverlay: HTMLElement
   deniedTitle: HTMLElement
@@ -73,7 +76,19 @@ export class UIManager {
     this.elements.timer.textContent = this.formatTimer(snapshot.elapsedMs)
     this.elements.phaseLabel.textContent = snapshot.label
     this.elements.prompt.textContent = snapshot.prompt
+    this.elements.prompt.classList.toggle('hidden', snapshot.prompt.length === 0)
     this.elements.diagnostics.innerHTML = this.formatDiagnostics(snapshot.diagnostics)
+  }
+
+  public updateDialogue(snapshot: DialogueSnapshot, onChoice: (choiceId: string) => void): void {
+    this.elements.dialogue.textContent = snapshot.text
+    this.elements.dialogue.classList.toggle('hidden', !snapshot.active || snapshot.text.length === 0)
+    this.elements.choices.innerHTML = ''
+    this.elements.choices.classList.toggle('hidden', snapshot.choices.length === 0)
+
+    for (const choice of snapshot.choices) {
+      this.elements.choices.append(this.createChoiceButton(choice, onChoice))
+    }
   }
 
   private setScreen(screen: 'start' | 'denied' | 'game'): void {
@@ -112,6 +127,8 @@ export class UIManager {
       timer: this.getElement(root, '#timer'),
       phaseLabel: this.getElement(root, '#phase-label'),
       prompt: this.getElement(root, '#prompt'),
+      dialogue: this.getElement(root, '#dialogue'),
+      choices: this.getElement(root, '#choices'),
       diagnostics: this.getElement(root, '#diagnostics'),
       debugOverlay: this.getElement(root, '#debug-overlay'),
       deniedTitle: this.getElement(root, '#denied-title'),
@@ -183,6 +200,8 @@ export class UIManager {
             <div id="phase-label" class="phase-label">CALIBRATION: 0%</div>
           </div>
           <div id="prompt" class="prompt">Please center yourself in the frame.</div>
+          <div id="dialogue" class="dialogue hidden"></div>
+          <div id="choices" class="choices hidden"></div>
           <div id="diagnostics" class="diagnostics"></div>
         </div>
         <button id="exit-test" type="button" class="exit-button">EXIT TEST</button>
@@ -190,5 +209,14 @@ export class UIManager {
 
       <section id="debug-overlay" class="debug-overlay hidden" aria-label="Debug overlay"></section>
     `
+  }
+
+  private createChoiceButton(choice: DialogueChoice, onChoice: (choiceId: string) => void): HTMLButtonElement {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'choice-button'
+    button.textContent = choice.label
+    button.addEventListener('click', () => onChoice(choice.id))
+    return button
   }
 }

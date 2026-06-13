@@ -72,6 +72,10 @@ export class EffectsRenderer {
       return eventActive ? 1.1 : 0.3
     }
 
+    if (phaseId === 'reflectionDialogue') {
+      return 0.25
+    }
+
     if (phaseId === 'delay') {
       return 0.25
     }
@@ -153,7 +157,15 @@ export class EffectsRenderer {
   }
 
   private drawVignette(width: number, height: number, options: RenderOptions): void {
-    const finalOpacity = options.predictionActive ? 0.68 : options.phase.id === 'negativeLatency' ? 0.64 : options.phase.id === 'mismatch' ? 0.58 : 0.48
+    const finalOpacity = options.phase.id === 'reflectionDialogue'
+      ? 0.72
+      : options.predictionActive
+        ? 0.68
+        : options.phase.id === 'negativeLatency'
+          ? 0.64
+          : options.phase.id === 'mismatch'
+            ? 0.58
+            : 0.48
     const gradient = this.context.createRadialGradient(
       width / 2,
       height / 2,
@@ -169,7 +181,15 @@ export class EffectsRenderer {
   }
 
   private drawScanlines(width: number, height: number, options: RenderOptions): void {
-    const opacity = options.predictionActive ? 0.078 : options.phase.id === 'negativeLatency' ? 0.064 : options.phase.id === 'mismatch' ? 0.052 : 0.035
+    const opacity = options.phase.id === 'reflectionDialogue'
+      ? 0.074
+      : options.predictionActive
+        ? 0.078
+        : options.phase.id === 'negativeLatency'
+          ? 0.064
+          : options.phase.id === 'mismatch'
+            ? 0.052
+            : 0.035
     this.context.fillStyle = `rgba(255, 255, 255, ${opacity})`
 
     for (let y = 0; y < height; y += 6) {
@@ -205,13 +225,13 @@ export class EffectsRenderer {
   }
 
   private drawGlitchBlocks(width: number, height: number, options: RenderOptions): void {
-    if (!options.mismatchActive && !options.predictionActive) {
+    if (!options.mismatchActive && !options.predictionActive && options.phase.id !== 'reflectionDialogue') {
       return
     }
 
     const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive ? 0.024 : 0.018)))
 
-    if (pulse < (options.predictionActive ? 0.68 : 0.58)) {
+    if (pulse < (options.phase.id === 'reflectionDialogue' ? 0.82 : options.predictionActive ? 0.68 : 0.58)) {
       return
     }
 

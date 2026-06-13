@@ -13,6 +13,11 @@ export type DebugSnapshot = {
   predictionEventActive: boolean
   predictionFootageSource: 'oppositeHandFromRightHandClip' | 'rightHandClip' | 'genericBufferFallback'
   liveFlickerActive: boolean
+  dialogueActive: boolean
+  dialogueLineId: string
+  dialogueLineIndex: number
+  dialogueText: string
+  selectedChoiceId: string | null
   stillnessTriggerMs: number
   mismatchDurationMs: number
   jitterIntensityPx: number
@@ -49,6 +54,10 @@ export class DebugManager {
       <div><span>predictionActive:</span> ${snapshot.predictionEventActive}</div>
       <div><span>predictionSource:</span> ${snapshot.predictionFootageSource}</div>
       <div><span>liveFlicker:</span> ${snapshot.liveFlickerActive}</div>
+      <div><span>dialogueActive:</span> ${snapshot.dialogueActive}</div>
+      <div><span>dialogueLine:</span> ${snapshot.dialogueLineIndex} ${snapshot.dialogueLineId}</div>
+      <div><span>dialogueText:</span> ${snapshot.dialogueText}</div>
+      <div><span>choice:</span> ${snapshot.selectedChoiceId ?? 'none'}</div>
       <div><span>stillTrigger:</span> ${snapshot.stillnessTriggerMs}ms</div>
       <div><span>mismatchDur:</span> ${snapshot.mismatchDurationMs}ms</div>
       <div><span>jitterPx:</span> ${snapshot.jitterIntensityPx.toFixed(2)}</div>

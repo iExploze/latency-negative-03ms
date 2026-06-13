@@ -1,10 +1,11 @@
-export type PhaseId = 'idle' | 'calibration' | 'delay' | 'mismatch' | 'negativeLatency' | 'terminated'
+export type PhaseId = 'idle' | 'calibration' | 'delay' | 'mismatch' | 'negativeLatency' | 'reflectionDialogue' | 'terminated'
 
 export type DiagnosticReadouts = {
   latency: string
   reflection: string
   subject: string
   sync: string
+  [key: string]: string
 }
 
 export type PhaseSnapshot = {
@@ -38,6 +39,7 @@ export class PhaseManager {
   private readonly delayRampDurationMs: number
   private readonly delayDurationMs: number
   private readonly mismatchDurationMs: number
+  private readonly negativeLatencyDurationMs: number
   private readonly promptTimeScale: number
   private readonly calibrationPromptTimeScale: number
   private phaseId: PhaseId = 'idle'
@@ -48,6 +50,7 @@ export class PhaseManager {
     this.delayRampDurationMs = debugMode ? 20_000 : 75_000
     this.delayDurationMs = debugMode ? 24_000 : 75_000
     this.mismatchDurationMs = debugMode ? 24_000 : 90_000
+    this.negativeLatencyDurationMs = debugMode ? 22_000 : 75_000
     this.promptTimeScale = debugMode ? 0.4 : 1
     this.calibrationPromptTimeScale = debugMode ? this.calibrationDurationMs / 60_000 : 1
   }
@@ -138,6 +141,24 @@ export class PhaseManager {
       }
     }
 
+    if (this.phaseId === 'reflectionDialogue') {
+      return {
+        id: this.phaseId,
+        label: 'SUBJECT ORDER: UNRESOLVED',
+        elapsedMs,
+        delayMs: 1600,
+        displayedLatencyMs: 0,
+        prompt: '',
+        diagnostics: {
+          latency: 'invalid',
+          reflection: 'leading',
+          subject: 'duplicate',
+          sync: 'unresolved',
+          'exit permission': 'denied',
+        },
+      }
+    }
+
     if (this.phaseId === 'terminated') {
       return {
         id: this.phaseId,
@@ -197,6 +218,12 @@ export class PhaseManager {
 
     if (this.phaseId === 'mismatch' && nowMs - this.phaseStartedAt >= this.mismatchDurationMs) {
       this.phaseId = 'negativeLatency'
+      this.phaseStartedAt = nowMs
+      return
+    }
+
+    if (this.phaseId === 'negativeLatency' && nowMs - this.phaseStartedAt >= this.negativeLatencyDurationMs) {
+      this.phaseId = 'reflectionDialogue'
       this.phaseStartedAt = nowMs
     }
   }
