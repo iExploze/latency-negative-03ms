@@ -1,4 +1,4 @@
-export type PhaseId = 'idle' | 'calibration' | 'delay' | 'mismatch' | 'terminated'
+export type PhaseId = 'idle' | 'calibration' | 'delay' | 'mismatch' | 'negativeLatency' | 'terminated'
 
 export type DiagnosticReadouts = {
   latency: string
@@ -12,6 +12,7 @@ export type PhaseSnapshot = {
   label: string
   elapsedMs: number
   delayMs: number
+  displayedLatencyMs: number
   prompt: string
   diagnostics: DiagnosticReadouts
 }
@@ -35,6 +36,8 @@ export class PhaseManager {
   private readonly calibrationDurationMs: number
   private readonly delayRampDurationMs: number
   private readonly delayDurationMs: number
+  private readonly mismatchDurationMs: number
+  private readonly promptTimeScale: number
   private phaseId: PhaseId = 'idle'
   private phaseStartedAt = 0
 
@@ -42,6 +45,8 @@ export class PhaseManager {
     this.calibrationDurationMs = debugMode ? 10_000 : 60_000
     this.delayRampDurationMs = debugMode ? 20_000 : 75_000
     this.delayDurationMs = debugMode ? 24_000 : 75_000
+    this.mismatchDurationMs = debugMode ? 24_000 : 90_000
+    this.promptTimeScale = debugMode ? 0.4 : 1
   }
 
   public start(nowMs: number): void {
@@ -64,6 +69,7 @@ export class PhaseManager {
         label: this.getCalibrationLabel(elapsedMs),
         elapsedMs,
         delayMs: 0,
+        displayedLatencyMs: 34,
         prompt: this.getPrompt(elapsedMs),
         diagnostics: {
           latency: '034ms',
@@ -82,6 +88,7 @@ export class PhaseManager {
         label: 'SYNC CHECK: ACTIVE',
         elapsedMs,
         delayMs,
+        displayedLatencyMs: delayMs,
         prompt: this.getDelayPrompt(elapsedMs),
         diagnostics: {
           latency: `${Math.round(delayMs).toString().padStart(3, '0')}ms`,
@@ -98,6 +105,7 @@ export class PhaseManager {
         label: 'REFLECTION CHECK: UNSTABLE',
         elapsedMs,
         delayMs: 1500,
+        displayedLatencyMs: 0,
         prompt: this.getMismatchPrompt(elapsedMs),
         diagnostics: {
           latency: 'unstable',
@@ -108,12 +116,32 @@ export class PhaseManager {
       }
     }
 
+    if (this.phaseId === 'negativeLatency') {
+      const displayedLatencyMs = this.getNegativeLatencyMs(elapsedMs)
+
+      return {
+        id: this.phaseId,
+        label: 'PREDICTION CHECK: ACTIVE',
+        elapsedMs,
+        delayMs: 0,
+        displayedLatencyMs,
+        prompt: this.getNegativeLatencyPrompt(elapsedMs),
+        diagnostics: {
+          latency: `-${Math.abs(displayedLatencyMs).toString().padStart(3, '0')}ms`,
+          reflection: 'leading',
+          subject: 'delayed',
+          sync: 'invalid',
+        },
+      }
+    }
+
     if (this.phaseId === 'terminated') {
       return {
         id: this.phaseId,
         label: 'TEST TERMINATED',
         elapsedMs,
         delayMs: 0,
+        displayedLatencyMs: 0,
         prompt: 'Test terminated.',
         diagnostics: {
           latency: '--',
@@ -129,6 +157,7 @@ export class PhaseManager {
       label: 'STANDBY',
       elapsedMs: 0,
       delayMs: 0,
+      displayedLatencyMs: 0,
       prompt: 'Awaiting mirror access.',
       diagnostics: {
         latency: '--',
@@ -160,6 +189,12 @@ export class PhaseManager {
     if (this.phaseId === 'delay' && nowMs - this.phaseStartedAt >= this.delayDurationMs) {
       this.phaseId = 'mismatch'
       this.phaseStartedAt = nowMs
+      return
+    }
+
+    if (this.phaseId === 'mismatch' && nowMs - this.phaseStartedAt >= this.mismatchDurationMs) {
+      this.phaseId = 'negativeLatency'
+      this.phaseStartedAt = nowMs
     }
   }
 
@@ -189,26 +224,59 @@ export class PhaseManager {
   }
 
   private getMismatchPrompt(elapsedMs: number): string {
-    if (elapsedMs >= 80_000) {
+    if (elapsedMs >= this.scaledPromptTime(80_000)) {
       return 'Recalibrating subject order.'
     }
 
-    if (elapsedMs >= 65_000) {
+    if (elapsedMs >= this.scaledPromptTime(65_000)) {
       return 'Do not correct it.'
     }
 
-    if (elapsedMs >= 45_000) {
+    if (elapsedMs >= this.scaledPromptTime(45_000)) {
       return 'Reflection drift detected.'
     }
 
-    if (elapsedMs >= 30_000) {
+    if (elapsedMs >= this.scaledPromptTime(30_000)) {
       return 'Good.'
     }
 
-    if (elapsedMs >= 15_000) {
+    if (elapsedMs >= this.scaledPromptTime(15_000)) {
       return 'Hold still.'
     }
 
     return 'Please do not move.'
+  }
+
+  private getNegativeLatencyPrompt(elapsedMs: number): string {
+    if (elapsedMs >= this.scaledPromptTime(65_000)) {
+      return 'Original unresolved.'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(52_000)) {
+      return 'Subject moved late.'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(38_000)) {
+      return 'Prediction error detected.'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(25_000)) {
+      return 'Turn your head left.'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(12_000)) {
+      return 'Please stop following the reflection.'
+    }
+
+    return 'Please follow the reflection.'
+  }
+
+  private getNegativeLatencyMs(elapsedMs: number): number {
+    const progress = Math.min(1, elapsedMs / this.scaledPromptTime(65_000))
+    return -Math.round(3 + progress * 100)
+  }
+
+  private scaledPromptTime(timeMs: number): number {
+    return timeMs * this.promptTimeScale
   }
 }

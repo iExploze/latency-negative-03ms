@@ -67,8 +67,8 @@ export class UIManager {
     this.elements.deniedMessage.textContent = message
   }
 
-  public updateHud(snapshot: PhaseSnapshot): void {
-    this.elements.liveLabel.textContent = snapshot.id === 'terminated' ? 'OFFLINE' : 'LIVE'
+  public updateHud(snapshot: PhaseSnapshot, liveLabel = 'LIVE'): void {
+    this.elements.liveLabel.textContent = snapshot.id === 'terminated' ? 'OFFLINE' : liveLabel
     this.elements.timer.textContent = this.formatTimer(snapshot.elapsedMs)
     this.elements.phaseLabel.textContent = snapshot.label
     this.elements.prompt.textContent = snapshot.prompt

@@ -34,8 +34,18 @@ let animationFrameId = 0
 let hasStarted = false
 let mismatchEvent: MismatchEvent | null = null
 let lastMismatchAt = -Infinity
+let predictionEvent: PredictionEvent | null = null
+let predictionTriggeredForPhase = false
 
 type MismatchEvent = {
+  startedAt: number
+  durationMs: number
+  clipStartedAt: number
+  freezeUntil: number
+  frozenFrame: ImageData | null
+}
+
+type PredictionEvent = {
   startedAt: number
   durationMs: number
   clipStartedAt: number
@@ -49,6 +59,10 @@ const MISMATCH_EVENT_DURATION_MS = 1100
 const MISMATCH_FREEZE_MS = 140
 const MISMATCH_CLIP_LOOKBACK_MS = 14_000
 const MISMATCH_CLIP_SPEED = 1.55
+const PREDICTION_EVENT_DURATION_MS = 1250
+const PREDICTION_FREEZE_MS = 120
+const PREDICTION_CLIP_LOOKBACK_MS = 16_000
+const PREDICTION_CLIP_SPEED = 1.75
 
 ui.showStart()
 
@@ -76,6 +90,8 @@ async function beginTest(): Promise<void> {
     frameBuffer.clear()
     motionDetector.reset()
     mismatchEvent = null
+    predictionEvent = null
+    predictionTriggeredForPhase = false
     lastMismatchAt = -Infinity
     hasStarted = true
     phaseManager.start(performance.now())
@@ -93,6 +109,8 @@ function exitTest(): void {
   frameBuffer.clear()
   motionDetector.reset()
   mismatchEvent = null
+  predictionEvent = null
+  predictionTriggeredForPhase = false
   phaseManager.terminate(performance.now())
   hasStarted = false
   renderer.render({
@@ -100,6 +118,7 @@ function exitTest(): void {
     phase: phaseManager.getSnapshot(performance.now()),
     timestampMs: performance.now(),
     mismatchActive: false,
+    predictionActive: false,
   })
   debugManager.clear()
   stopLoop()
@@ -119,36 +138,45 @@ function startLoop(): void {
 
     const motionState = isCameraReady ? motionDetector.updateFromVideo(cameraVideo, nowMs) : motionDetector.getState()
     updateMismatchEvent(snapshot.id, nowMs, motionState)
+    updatePredictionEvent(snapshot.id, snapshot.elapsedMs, nowMs)
 
     const mismatchFrame = mismatchEvent
       ? getMismatchFrame(nowMs)
       : null
+    const predictionFrame = predictionEvent
+      ? getPredictionFrame(nowMs)
+      : null
     const delayedFrame = snapshot.id === 'delay' || snapshot.id === 'mismatch'
       ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
       : null
-    const source = mismatchFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
-    const renderSource = mismatchFrame ? 'mismatch' : delayedFrame ? 'delayed' : 'live'
+    const source = predictionFrame ?? mismatchFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
+    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : delayedFrame ? 'delayed' : 'live'
+    const predictionEventActive = predictionEvent !== null
 
     renderer.render({
       source,
       phase: snapshot,
       timestampMs: nowMs,
       mismatchActive: mismatchEvent !== null,
+      predictionActive: predictionEventActive,
     })
-    ui.updateHud(snapshot)
+    ui.updateHud(snapshot, getLiveLabel(snapshot.id, nowMs))
     debugManager.update({
       phase: snapshot.id,
       elapsedMs: snapshot.elapsedMs,
       delayMs: snapshot.delayMs,
+      displayedLatencyMs: snapshot.displayedLatencyMs,
       bufferFrameCount: frameBuffer.getFrameCount(),
       renderSource,
       motionScore: motionState.score,
       isStill: motionState.isStill,
       stillnessMs: motionState.stillnessMs,
       mismatchActive: mismatchEvent !== null,
+      negativeLatencyActive: snapshot.id === 'negativeLatency',
+      predictionEventActive,
       stillnessTriggerMs: STILLNESS_TRIGGER_MS,
       mismatchDurationMs: MISMATCH_EVENT_DURATION_MS,
-      jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null),
+      jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null || predictionEventActive),
     })
 
     if (hasStarted) {
@@ -157,6 +185,34 @@ function startLoop(): void {
   }
 
   animationFrameId = requestAnimationFrame(tick)
+}
+
+function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: number): void {
+  if (phaseId !== 'negativeLatency') {
+    predictionEvent = null
+    predictionTriggeredForPhase = false
+    return
+  }
+
+  if (predictionEvent && nowMs - predictionEvent.startedAt >= predictionEvent.durationMs) {
+    predictionEvent = null
+  }
+
+  const promptIsTurnCue = phaseElapsedMs >= (debugMode ? 10_000 : 25_000)
+  const promptHasAdvanced = phaseElapsedMs >= (debugMode ? 15_200 : 38_000)
+
+  if (predictionTriggeredForPhase || predictionEvent || !promptIsTurnCue || promptHasAdvanced) {
+    return
+  }
+
+  predictionTriggeredForPhase = true
+  predictionEvent = {
+    startedAt: nowMs,
+    durationMs: PREDICTION_EVENT_DURATION_MS,
+    clipStartedAt: Math.max(0, nowMs - PREDICTION_CLIP_LOOKBACK_MS),
+    freezeUntil: nowMs + PREDICTION_FREEZE_MS,
+    frozenFrame: frameBuffer.getFrameAtDelay(nowMs, 700),
+  }
 }
 
 function updateMismatchEvent(phaseId: string, nowMs: number, motionState: MotionState): void {
@@ -181,6 +237,19 @@ function updateMismatchEvent(phaseId: string, nowMs: number, motionState: Motion
   }
 }
 
+function getPredictionFrame(nowMs: number): ImageData | null {
+  if (!predictionEvent) {
+    return null
+  }
+
+  if (nowMs <= predictionEvent.freezeUntil) {
+    return predictionEvent.frozenFrame
+  }
+
+  const eventElapsedMs = nowMs - predictionEvent.startedAt
+  return frameBuffer.getNearestFrame(predictionEvent.clipStartedAt + eventElapsedMs * PREDICTION_CLIP_SPEED)
+}
+
 function getMismatchFrame(nowMs: number): ImageData | null {
   if (!mismatchEvent) {
     return null
@@ -192,6 +261,15 @@ function getMismatchFrame(nowMs: number): ImageData | null {
 
   const eventElapsedMs = nowMs - mismatchEvent.startedAt
   return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * MISMATCH_CLIP_SPEED)
+}
+
+function getLiveLabel(phaseId: string, nowMs: number): string {
+  if (phaseId !== 'negativeLatency') {
+    return 'LIVE'
+  }
+
+  const flicker = Math.sin(nowMs * 0.018) > 0.92 || Math.sin(nowMs * 0.041) > 0.96
+  return flicker ? 'LIVE?' : 'LIVE'
 }
 
 function stopLoop(): void {

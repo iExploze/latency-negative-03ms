@@ -5,6 +5,7 @@ type RenderOptions = {
   phase: PhaseSnapshot
   timestampMs: number
   mismatchActive: boolean
+  predictionActive: boolean
 }
 
 export class EffectsRenderer {
@@ -61,9 +62,13 @@ export class EffectsRenderer {
     this.drawClinicalOverlays(width, height, options)
   }
 
-  public getJitterIntensity(phaseId: string, mismatchActive: boolean): number {
+  public getJitterIntensity(phaseId: string, eventActive: boolean): number {
     if (phaseId === 'mismatch') {
-      return mismatchActive ? 1.35 : 0.45
+      return eventActive ? 1.35 : 0.45
+    }
+
+    if (phaseId === 'negativeLatency') {
+      return eventActive ? 0.9 : 0.3
     }
 
     if (phaseId === 'delay') {
@@ -145,7 +150,7 @@ export class EffectsRenderer {
   }
 
   private drawVignette(width: number, height: number, options: RenderOptions): void {
-    const finalOpacity = options.phase.id === 'mismatch' ? 0.58 : 0.48
+    const finalOpacity = options.phase.id === 'negativeLatency' ? 0.64 : options.phase.id === 'mismatch' ? 0.58 : 0.48
     const gradient = this.context.createRadialGradient(
       width / 2,
       height / 2,
@@ -161,7 +166,7 @@ export class EffectsRenderer {
   }
 
   private drawScanlines(width: number, height: number, options: RenderOptions): void {
-    const opacity = options.phase.id === 'mismatch' ? 0.052 : 0.035
+    const opacity = options.phase.id === 'negativeLatency' ? 0.064 : options.phase.id === 'mismatch' ? 0.052 : 0.035
     this.context.fillStyle = `rgba(255, 255, 255, ${opacity})`
 
     for (let y = 0; y < height; y += 6) {
@@ -182,7 +187,7 @@ export class EffectsRenderer {
   }
 
   private getJitter(options: RenderOptions): { x: number; y: number } {
-    const intensity = this.getJitterIntensity(options.phase.id, options.mismatchActive)
+    const intensity = this.getJitterIntensity(options.phase.id, options.mismatchActive || options.predictionActive)
 
     if (intensity === 0) {
       return { x: 0, y: 0 }
@@ -197,17 +202,17 @@ export class EffectsRenderer {
   }
 
   private drawGlitchBlocks(width: number, height: number, options: RenderOptions): void {
-    if (!options.mismatchActive) {
+    if (!options.mismatchActive && !options.predictionActive) {
       return
     }
 
-    const pulse = Math.abs(Math.sin(options.timestampMs * 0.018))
+    const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive ? 0.024 : 0.018)))
 
-    if (pulse < 0.58) {
+    if (pulse < (options.predictionActive ? 0.68 : 0.58)) {
       return
     }
 
-    this.context.fillStyle = 'rgba(232, 232, 232, 0.08)'
+    this.context.fillStyle = options.predictionActive ? 'rgba(232, 232, 232, 0.11)' : 'rgba(232, 232, 232, 0.08)'
 
     for (let i = 0; i < 7; i += 1) {
       const x = Math.abs(Math.sin(options.timestampMs * 0.01 + i * 19.19)) * width
