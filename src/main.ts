@@ -1,60 +1,137 @@
 import './style.css'
-import typescriptLogo from './assets/typescript.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import { setupCounter } from './counter.ts'
+import { CameraSystem } from './systems/CameraSystem'
+import { EffectsRenderer } from './systems/EffectsRenderer'
+import { PhaseManager } from './systems/PhaseManager'
+import { UIManager } from './systems/UIManager'
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${typescriptLogo}" class="framework" alt="TypeScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+const app = document.querySelector<HTMLDivElement>('#app')
 
-<div class="ticks"></div>
+if (!app) {
+  throw new Error('Missing app root.')
+}
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+const ui = new UIManager(app)
+const video = document.querySelector<HTMLVideoElement>('#camera-video')
+const canvas = document.querySelector<HTMLCanvasElement>('#mirror-canvas')
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+if (!video || !canvas) {
+  throw new Error('Missing mirror video or canvas.')
+}
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+const cameraVideo = video
+const mirrorCanvas = canvas
+const camera = new CameraSystem(cameraVideo)
+const phaseManager = new PhaseManager()
+const renderer = new EffectsRenderer(mirrorCanvas)
+let animationFrameId = 0
+let hasStarted = false
+
+ui.showStart()
+
+ui.elements.startButton.addEventListener('click', () => {
+  void beginTest()
+})
+
+ui.elements.retryButton.addEventListener('click', () => {
+  void beginTest()
+})
+
+ui.elements.privacyButton.addEventListener('click', () => ui.showPrivacy())
+ui.elements.privacyCloseButton.addEventListener('click', () => ui.closePrivacy())
+ui.elements.privacyBackButton.addEventListener('click', () => ui.closePrivacy())
+ui.elements.audioTestButton.addEventListener('click', () => playAudioTest())
+ui.elements.exitButton.addEventListener('click', () => exitTest())
+window.addEventListener('beforeunload', () => camera.stop())
+
+async function beginTest(): Promise<void> {
+  ui.closePrivacy()
+  ui.showRequesting()
+
+  try {
+    await camera.requestAccess()
+    hasStarted = true
+    phaseManager.start(performance.now())
+    ui.showGame()
+    startLoop()
+  } catch (error) {
+    hasStarted = false
+    stopLoop()
+    showCameraError(error)
+  }
+}
+
+function exitTest(): void {
+  camera.stop()
+  phaseManager.terminate(performance.now())
+  hasStarted = false
+  renderer.render({
+    video: cameraVideo,
+    phase: phaseManager.getSnapshot(performance.now()),
+    isCameraReady: false,
+  })
+  stopLoop()
+  ui.showStart()
+}
+
+function startLoop(): void {
+  stopLoop()
+
+  const tick = (nowMs: number) => {
+    const snapshot = phaseManager.getSnapshot(nowMs)
+
+    renderer.render({
+      video: cameraVideo,
+      phase: snapshot,
+      isCameraReady: camera.isReady,
+    })
+    ui.updateHud(snapshot)
+
+    if (hasStarted) {
+      animationFrameId = requestAnimationFrame(tick)
+    }
+  }
+
+  animationFrameId = requestAnimationFrame(tick)
+}
+
+function stopLoop(): void {
+  if (animationFrameId !== 0) {
+    cancelAnimationFrame(animationFrameId)
+    animationFrameId = 0
+  }
+}
+
+function showCameraError(error: unknown): void {
+  if (camera.status === 'unsupported') {
+    ui.showDenied('Browser does not support mirror access.', 'Please use desktop Chrome or Edge.')
+    return
+  }
+
+  if (camera.status === 'denied') {
+    ui.showDenied('Reflection unavailable.', 'Subject refused observation.')
+    return
+  }
+
+  const message = error instanceof DOMException && error.name === 'NotFoundError'
+    ? 'The test requires a camera.'
+    : 'Mirror initialization failed.'
+  ui.showDenied('No reflection device found.', message)
+}
+
+function playAudioTest(): void {
+  const context = new AudioContext()
+  const oscillator = context.createOscillator()
+  const gain = context.createGain()
+
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(176, context.currentTime)
+  oscillator.frequency.exponentialRampToValueAtTime(88, context.currentTime + 1.8)
+  gain.gain.setValueAtTime(0.0001, context.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.08)
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 2)
+
+  oscillator.connect(gain)
+  gain.connect(context.destination)
+  oscillator.start()
+  oscillator.stop(context.currentTime + 2)
+}
