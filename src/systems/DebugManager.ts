@@ -8,6 +8,9 @@ export type DebugSnapshot = {
   isStill: boolean
   stillnessMs: number
   mismatchActive: boolean
+  stillnessTriggerMs: number
+  mismatchDurationMs: number
+  jitterIntensityPx: number
 }
 
 export class DebugManager {
@@ -36,6 +39,9 @@ export class DebugManager {
       <div><span>isStill:</span> ${snapshot.isStill}</div>
       <div><span>stillnessMs:</span> ${Math.round(snapshot.stillnessMs)}</div>
       <div><span>mismatchActive:</span> ${snapshot.mismatchActive}</div>
+      <div><span>stillTrigger:</span> ${snapshot.stillnessTriggerMs}ms</div>
+      <div><span>mismatchDur:</span> ${snapshot.mismatchDurationMs}ms</div>
+      <div><span>jitterPx:</span> ${snapshot.jitterIntensityPx.toFixed(2)}</div>
     `
   }
 

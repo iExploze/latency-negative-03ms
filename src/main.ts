@@ -43,9 +43,12 @@ type MismatchEvent = {
   frozenFrame: ImageData | null
 }
 
-const STILLNESS_TRIGGER_MS = 3500
+const STILLNESS_TRIGGER_MS = 2400
 const MISMATCH_COOLDOWN_MS = 15000
-const MISMATCH_EVENT_DURATION_MS = 1800
+const MISMATCH_EVENT_DURATION_MS = 1100
+const MISMATCH_FREEZE_MS = 140
+const MISMATCH_CLIP_LOOKBACK_MS = 14_000
+const MISMATCH_CLIP_SPEED = 1.55
 
 ui.showStart()
 
@@ -143,6 +146,9 @@ function startLoop(): void {
       isStill: motionState.isStill,
       stillnessMs: motionState.stillnessMs,
       mismatchActive: mismatchEvent !== null,
+      stillnessTriggerMs: STILLNESS_TRIGGER_MS,
+      mismatchDurationMs: MISMATCH_EVENT_DURATION_MS,
+      jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null),
     })
 
     if (hasStarted) {
@@ -163,12 +169,12 @@ function updateMismatchEvent(phaseId: string, nowMs: number, motionState: Motion
   }
 
   if (motionState.stillnessMs >= STILLNESS_TRIGGER_MS) {
-    const clipStartedAt = Math.max(0, nowMs - 18_000)
+    const clipStartedAt = Math.max(0, nowMs - MISMATCH_CLIP_LOOKBACK_MS)
     mismatchEvent = {
       startedAt: nowMs,
       durationMs: MISMATCH_EVENT_DURATION_MS,
       clipStartedAt,
-      freezeUntil: nowMs + 260,
+      freezeUntil: nowMs + MISMATCH_FREEZE_MS,
       frozenFrame: frameBuffer.getFrameAtDelay(nowMs, 1500),
     }
     lastMismatchAt = nowMs
@@ -185,7 +191,7 @@ function getMismatchFrame(nowMs: number): ImageData | null {
   }
 
   const eventElapsedMs = nowMs - mismatchEvent.startedAt
-  return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * 0.75)
+  return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * MISMATCH_CLIP_SPEED)
 }
 
 function stopLoop(): void {

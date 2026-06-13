@@ -272,14 +272,22 @@ h2 {
 .prompt {
   position: fixed;
   left: 50%;
-  bottom: 34px;
-  width: min(760px, calc(100% - 32px));
+  bottom: 42px;
+  width: min(900px, calc(100% - 32px));
+  padding: 14px 20px;
+  border: 1px solid rgba(232, 232, 232, 0.16);
+  border-radius: 4px;
   transform: translateX(-50%);
   color: var(--text);
+  background: rgba(3, 3, 4, 0.68);
+  backdrop-filter: blur(4px);
   text-align: center;
-  font-size: clamp(15px, 2vw, 20px);
-  line-height: 1.35;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.72);
+  font-size: clamp(24px, 3.3vw, 42px);
+  font-weight: 500;
+  line-height: 1.18;
+  text-shadow:
+    0 2px 24px rgba(0, 0, 0, 0.86),
+    0 0 18px rgba(232, 232, 232, 0.12);
 }
 
 .diagnostics {
@@ -379,7 +387,13 @@ h2 {
   .debug-overlay {
     top: auto;
     right: 16px;
-    bottom: 136px;
+    bottom: 156px;
     left: 16px;
+  }
+
+  .prompt {
+    bottom: 88px;
+    padding: 12px 14px;
+    font-size: clamp(21px, 7vw, 32px);
   }
 }

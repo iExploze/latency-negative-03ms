@@ -61,6 +61,18 @@ export class EffectsRenderer {
     this.drawClinicalOverlays(width, height, options)
   }
 
+  public getJitterIntensity(phaseId: string, mismatchActive: boolean): number {
+    if (phaseId === 'mismatch') {
+      return mismatchActive ? 1.35 : 0.45
+    }
+
+    if (phaseId === 'delay') {
+      return 0.25
+    }
+
+    return 0
+  }
+
   private drawMirroredSource(
     source: CanvasImageSource | ImageData,
     width: number,
@@ -170,14 +182,17 @@ export class EffectsRenderer {
   }
 
   private getJitter(options: RenderOptions): { x: number; y: number } {
-    if (options.phase.id !== 'mismatch') {
+    const intensity = this.getJitterIntensity(options.phase.id, options.mismatchActive)
+
+    if (intensity === 0) {
       return { x: 0, y: 0 }
     }
 
-    const intensity = options.mismatchActive ? 4 : 1.5
+    const steppedTime = Math.floor(options.timestampMs / 120) * 120
+
     return {
-      x: Math.sin(options.timestampMs * 0.031) * intensity,
-      y: Math.cos(options.timestampMs * 0.027) * intensity * 0.5,
+      x: Math.sin(steppedTime * 0.021) * intensity,
+      y: Math.cos(steppedTime * 0.019) * intensity * 0.45,
     }
   }
 
