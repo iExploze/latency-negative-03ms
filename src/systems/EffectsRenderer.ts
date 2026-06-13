@@ -6,6 +6,7 @@ type RenderOptions = {
   timestampMs: number
   mismatchActive: boolean
   predictionActive: boolean
+  extraHorizontalFlip: boolean
 }
 
 export class EffectsRenderer {
@@ -96,8 +97,10 @@ export class EffectsRenderer {
     const y = (height - drawHeight) / 2 + jitter.y
 
     this.context.save()
-    this.context.translate(width, 0)
-    this.context.scale(-1, 1)
+    if (!options.extraHorizontalFlip) {
+      this.context.translate(width, 0)
+      this.context.scale(-1, 1)
+    }
     this.context.drawImage(drawableSource, x, y, drawWidth, drawHeight)
     this.context.restore()
   }

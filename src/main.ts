@@ -2,7 +2,7 @@ import './style.css'
 import { CameraSystem } from './systems/CameraSystem'
 import { DebugManager } from './systems/DebugManager'
 import { EffectsRenderer } from './systems/EffectsRenderer'
-import { FrameBuffer } from './systems/FrameBuffer'
+import { FrameBuffer, type BufferedFrame } from './systems/FrameBuffer'
 import { MotionDetector, type MotionState } from './systems/MotionDetector'
 import { PhaseManager } from './systems/PhaseManager'
 import { UIManager } from './systems/UIManager'
@@ -51,8 +51,10 @@ type PredictionEvent = {
   clipStartedAt: number
   freezeUntil: number
   frozenFrame: ImageData | null
-  source: 'handClip' | 'movementBuffer'
+  source: PredictionFootageSource
 }
+
+type PredictionFootageSource = 'oppositeHandFromRightHandClip' | 'rightHandClip' | 'genericBufferFallback'
 
 const STILLNESS_TRIGGER_MS = 2400
 const MISMATCH_COOLDOWN_MS = 15000
@@ -62,6 +64,8 @@ const MISMATCH_CLIP_LOOKBACK_MS = 14_000
 const MISMATCH_CLIP_SPEED = 1.55
 const HAND_CLIP_NAME = 'calibrationHandRaise'
 const HAND_CLIP_MAX_FRAMES = 70
+const HAND_CAPTURE_START_MS = debugMode ? 5_000 : 30_000
+const HAND_CAPTURE_END_MS = debugMode ? 6_350 : 38_000
 const PREDICTION_EVENT_DURATION_MS = 1650
 const PREDICTION_FREEZE_MS = 180
 const PREDICTION_CLIP_LOOKBACK_MS = 16_000
@@ -122,6 +126,7 @@ function exitTest(): void {
     timestampMs: performance.now(),
     mismatchActive: false,
     predictionActive: false,
+    extraHorizontalFlip: false,
   })
   debugManager.clear()
   stopLoop()
@@ -153,6 +158,7 @@ function startLoop(): void {
     const predictionFrame = predictionEvent
       ? getPredictionFrame(nowMs)
       : null
+    const predictionUsesExtraFlip = predictionEvent?.source === 'oppositeHandFromRightHandClip'
     const delayedFrame = snapshot.id === 'delay' || snapshot.id === 'mismatch'
       ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
       : null
@@ -167,6 +173,7 @@ function startLoop(): void {
       timestampMs: nowMs,
       mismatchActive: mismatchEvent !== null,
       predictionActive: predictionEventActive,
+      extraHorizontalFlip: predictionUsesExtraFlip,
     })
     ui.updateHud(snapshot, liveState.label)
     debugManager.update({
@@ -197,12 +204,12 @@ function startLoop(): void {
   animationFrameId = requestAnimationFrame(tick)
 }
 
-function captureCalibrationClips(phaseId: string, phaseElapsedMs: number, frame: { timeMs: number; imageData: ImageData }): void {
+function captureCalibrationClips(phaseId: string, phaseElapsedMs: number, frame: BufferedFrame): void {
   if (phaseId !== 'calibration') {
     return
   }
 
-  if (phaseElapsedMs >= 30_000 && phaseElapsedMs <= 38_000) {
+  if (phaseElapsedMs >= HAND_CAPTURE_START_MS && phaseElapsedMs <= HAND_CAPTURE_END_MS) {
     frameBuffer.addFrameToClip(HAND_CLIP_NAME, frame, HAND_CLIP_MAX_FRAMES)
   }
 }
@@ -274,7 +281,10 @@ function getPredictionFrame(nowMs: number): ImageData | null {
   const activeDurationMs = Math.max(1, predictionEvent.durationMs - PREDICTION_FREEZE_MS)
   const progress = Math.min(1, Math.max(0, (eventElapsedMs - PREDICTION_FREEZE_MS) / activeDurationMs))
 
-  if (predictionEvent.source === 'handClip') {
+  if (
+    predictionEvent.source === 'oppositeHandFromRightHandClip'
+    || predictionEvent.source === 'rightHandClip'
+  ) {
     return frameBuffer.getClipFrameAtProgress(HAND_CLIP_NAME, progress)
   }
 
@@ -294,8 +304,10 @@ function getMismatchFrame(nowMs: number): ImageData | null {
   return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * MISMATCH_CLIP_SPEED)
 }
 
-function getAvailablePredictionSource(): 'handClip' | 'movementBuffer' {
-  return frameBuffer.getClipFrameCount(HAND_CLIP_NAME) >= 12 ? 'handClip' : 'movementBuffer'
+function getAvailablePredictionSource(): PredictionFootageSource {
+  return frameBuffer.getClipFrameCount(HAND_CLIP_NAME) >= 12
+    ? 'oppositeHandFromRightHandClip'
+    : 'genericBufferFallback'
 }
 
 function getLiveState(phaseId: string, nowMs: number): { label: string; isQuestion: boolean } {

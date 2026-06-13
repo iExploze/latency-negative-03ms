@@ -27,7 +27,8 @@ const calibrationPrompts: PromptCue[] = [
   { atMs: 10_000, text: 'Please look directly at yourself.' },
   { atMs: 20_000, text: 'Blink naturally.' },
   { atMs: 30_000, text: 'Raise your right hand.' },
-  { atMs: 40_000, text: 'Smile briefly.' },
+  { atMs: 38_000, text: 'Lower your hand.' },
+  { atMs: 43_000, text: 'Smile briefly.' },
   { atMs: 50_000, text: 'Remain still.' },
   { atMs: 60_000, text: 'Calibration complete.' },
 ]
@@ -38,6 +39,7 @@ export class PhaseManager {
   private readonly delayDurationMs: number
   private readonly mismatchDurationMs: number
   private readonly promptTimeScale: number
+  private readonly calibrationPromptTimeScale: number
   private phaseId: PhaseId = 'idle'
   private phaseStartedAt = 0
 
@@ -47,6 +49,7 @@ export class PhaseManager {
     this.delayDurationMs = debugMode ? 24_000 : 75_000
     this.mismatchDurationMs = debugMode ? 24_000 : 90_000
     this.promptTimeScale = debugMode ? 0.4 : 1
+    this.calibrationPromptTimeScale = debugMode ? this.calibrationDurationMs / 60_000 : 1
   }
 
   public start(nowMs: number): void {
@@ -175,7 +178,7 @@ export class PhaseManager {
 
   private getPrompt(elapsedMs: number): string {
     return calibrationPrompts.reduce((activePrompt, cue) => {
-      return elapsedMs >= cue.atMs ? cue.text : activePrompt
+      return elapsedMs >= cue.atMs * this.calibrationPromptTimeScale ? cue.text : activePrompt
     }, calibrationPrompts[0].text)
   }
 
@@ -261,7 +264,7 @@ export class PhaseManager {
     }
 
     if (elapsedMs >= this.scaledPromptTime(12_000)) {
-      return 'Raise your right hand.'
+      return 'Raise your left hand.'
     }
 
     return 'Please follow the reflection.'

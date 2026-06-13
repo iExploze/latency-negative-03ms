@@ -11,7 +11,7 @@ export type DebugSnapshot = {
   mismatchActive: boolean
   negativeLatencyActive: boolean
   predictionEventActive: boolean
-  predictionFootageSource: 'handClip' | 'movementBuffer'
+  predictionFootageSource: 'oppositeHandFromRightHandClip' | 'rightHandClip' | 'genericBufferFallback'
   liveFlickerActive: boolean
   stillnessTriggerMs: number
   mismatchDurationMs: number

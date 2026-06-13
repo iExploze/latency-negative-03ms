@@ -228,37 +228,52 @@ h2 {
 
 .hud {
   position: fixed;
-  inset: 24px 24px auto;
+  inset: 0;
   pointer-events: none;
 }
 
 .hud-top {
+  position: fixed;
+  inset: 24px 24px auto;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   align-items: flex-start;
 }
 
 .live-label {
+  position: fixed;
+  top: max(24px, calc(50svh - min(31.5vw, (100svh - 210px) / 2) + 10px));
+  left: max(24px, calc(50vw - min(560px, 50vw) + 10px));
+  z-index: 8;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-width: 86px;
-  padding: 6px 9px;
-  border: 1px solid rgba(232, 232, 232, 0.12);
+  justify-content: center;
+  gap: 12px;
+  min-width: 126px;
+  padding: 10px 14px;
+  border: 1px solid rgba(232, 232, 232, 0.22);
   border-radius: 4px;
   color: var(--text);
-  background: rgba(3, 3, 4, 0.54);
-  font-size: 18px;
+  background: rgba(3, 3, 4, 0.78);
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
-  text-shadow: 0 0 18px rgba(232, 232, 232, 0.14);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 10px 36px rgba(0, 0, 0, 0.42);
+  text-shadow: 0 0 22px rgba(232, 232, 232, 0.2);
+  transition:
+    transform 80ms steps(2),
+    box-shadow 80ms steps(2),
+    background-color 80ms steps(2),
+    border-color 80ms steps(2);
 }
 
 .live-label::before {
   content: "";
-  width: 7px;
-  height: 7px;
+  width: 11px;
+  height: 11px;
   border-radius: 999px;
   background: var(--danger);
   box-shadow: 0 0 14px rgba(184, 74, 74, 0.8);
@@ -266,12 +281,16 @@ h2 {
 
 .live-label.live-question {
   color: #ffffff;
-  border-color: rgba(184, 74, 74, 0.72);
-  background: rgba(184, 74, 74, 0.18);
+  border-color: rgba(255, 255, 255, 0.78);
+  background:
+    linear-gradient(90deg, rgba(184, 74, 74, 0.42), rgba(3, 3, 4, 0.82) 42%),
+    rgba(184, 74, 74, 0.2);
   box-shadow:
-    0 0 0 1px rgba(184, 74, 74, 0.2),
-    0 0 28px rgba(184, 74, 74, 0.42);
-  transform: translateX(3px) scale(1.08);
+    0 0 0 2px rgba(255, 255, 255, 0.18),
+    0 0 0 5px rgba(184, 74, 74, 0.18),
+    0 0 46px rgba(184, 74, 74, 0.72),
+    0 0 80px rgba(255, 255, 255, 0.12);
+  transform: translateX(6px) scale(1.18);
 }
 
 .live-label.live-question::before {
@@ -390,6 +409,14 @@ h2 {
 
   .hud {
     inset: 16px 16px auto;
+  }
+
+  .live-label {
+    top: 96px;
+    left: 22px;
+    min-width: 108px;
+    padding: 9px 12px;
+    font-size: 22px;
   }
 
   .diagnostics {
