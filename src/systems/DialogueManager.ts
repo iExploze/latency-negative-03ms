@@ -15,6 +15,7 @@ export type DialogueSnapshot = {
   text: string
   choices: DialogueChoice[]
   selectedChoiceId: DialogueChoiceId | null
+  readyForExit: boolean
 }
 
 const EMPTY_DIALOGUE: DialogueSnapshot = {
@@ -24,6 +25,7 @@ const EMPTY_DIALOGUE: DialogueSnapshot = {
   text: '',
   choices: [],
   selectedChoiceId: null,
+  readyForExit: false,
 }
 
 const CHOICES: DialogueChoice[] = [
@@ -73,6 +75,7 @@ export class DialogueManager {
         text: 'Why are you copying me?',
         choices: CHOICES,
         selectedChoiceId: null,
+        readyForExit: false,
       }
     }
 
@@ -84,6 +87,7 @@ export class DialogueManager {
         text: 'You always move late.',
         choices: [],
         selectedChoiceId: null,
+        readyForExit: false,
       }
     }
 
@@ -94,6 +98,7 @@ export class DialogueManager {
       text: 'You moved late.',
       choices: [],
       selectedChoiceId: null,
+      readyForExit: false,
     }
   }
 
@@ -133,6 +138,7 @@ export class DialogueManager {
         text: 'Stay there.',
         choices: [],
         selectedChoiceId: this.selectedChoice.id,
+        readyForExit: elapsedSinceChoice >= 24_000,
       }
     }
 
@@ -144,6 +150,7 @@ export class DialogueManager {
         text: 'I know how to do it now.',
         choices: [],
         selectedChoiceId: this.selectedChoice.id,
+        readyForExit: false,
       }
     }
 
@@ -155,6 +162,7 @@ export class DialogueManager {
         text: 'Please remain visible.',
         choices: [],
         selectedChoiceId: this.selectedChoice.id,
+        readyForExit: false,
       }
     }
 
@@ -165,6 +173,7 @@ export class DialogueManager {
       text: this.selectedChoice.response,
       choices: [],
       selectedChoiceId: this.selectedChoice.id,
+      readyForExit: false,
     }
   }
 }

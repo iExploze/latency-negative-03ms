@@ -196,6 +196,34 @@ h2 {
   color: var(--muted);
 }
 
+.final-screen {
+  background: #000;
+}
+
+.final-panel {
+  display: grid;
+  gap: 28px;
+  justify-items: center;
+  width: min(620px, 100%);
+  text-align: center;
+}
+
+.final-lines {
+  display: grid;
+  gap: 12px;
+  color: var(--text);
+  font-size: clamp(18px, 3vw, 30px);
+  line-height: 1.35;
+  text-shadow: 0 0 24px rgba(232, 232, 232, 0.12);
+}
+
+.end-word {
+  margin-top: 28px;
+  color: #ffffff;
+  font-size: clamp(42px, 9vw, 88px);
+  line-height: 1;
+}
+
 .game-screen {
   position: fixed;
   inset: 0;

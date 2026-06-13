@@ -6,6 +6,7 @@ type UIElements = {
   privacyModal: HTMLElement
   deniedScreen: HTMLElement
   gameScreen: HTMLElement
+  finalScreen: HTMLElement
   startButton: HTMLButtonElement
   privacyButton: HTMLButtonElement
   privacyCloseButton: HTMLButtonElement
@@ -13,6 +14,8 @@ type UIElements = {
   audioTestButton: HTMLButtonElement
   retryButton: HTMLButtonElement
   exitButton: HTMLButtonElement
+  closeMirrorButton: HTMLButtonElement
+  finalLines: HTMLElement
   liveLabel: HTMLElement
   timer: HTMLElement
   phaseLabel: HTMLElement
@@ -64,6 +67,29 @@ export class UIManager {
     this.setScreen('game')
   }
 
+  public showFinalComplete(): void {
+    this.setScreen('final')
+    this.elements.finalLines.innerHTML = `
+      <div>TEST COMPLETE</div>
+      <div>SUBJECT: RETURNED</div>
+      <div>REFLECTION: RELEASED</div>
+      <div>CAMERA: CLOSED</div>
+    `
+    this.elements.closeMirrorButton.classList.remove('hidden')
+  }
+
+  public showFinalEnd(): void {
+    this.setScreen('final')
+    this.elements.finalLines.innerHTML = '<div class="end-word">END</div>'
+    this.elements.closeMirrorButton.classList.add('hidden')
+  }
+
+  public showWrongSide(): void {
+    this.setScreen('final')
+    this.elements.finalLines.innerHTML = '<div>You closed the wrong side.</div>'
+    this.elements.closeMirrorButton.classList.add('hidden')
+  }
+
   public showDenied(title: string, message: string): void {
     this.setScreen('denied')
     this.elements.deniedTitle.textContent = title
@@ -91,10 +117,11 @@ export class UIManager {
     }
   }
 
-  private setScreen(screen: 'start' | 'denied' | 'game'): void {
+  private setScreen(screen: 'start' | 'denied' | 'game' | 'final'): void {
     this.elements.startScreen.classList.toggle('hidden', screen !== 'start')
     this.elements.deniedScreen.classList.toggle('hidden', screen !== 'denied')
     this.elements.gameScreen.classList.toggle('hidden', screen !== 'game')
+    this.elements.finalScreen.classList.toggle('hidden', screen !== 'final')
   }
 
   private formatTimer(elapsedMs: number): string {
@@ -116,6 +143,7 @@ export class UIManager {
       privacyModal: this.getElement(root, '#privacy-modal'),
       deniedScreen: this.getElement(root, '#denied-screen'),
       gameScreen: this.getElement(root, '#game-screen'),
+      finalScreen: this.getElement(root, '#final-screen'),
       startButton: this.getElement(root, '#begin-test'),
       privacyButton: this.getElement(root, '#privacy-note'),
       privacyCloseButton: this.getElement(root, '#privacy-understood'),
@@ -123,6 +151,8 @@ export class UIManager {
       audioTestButton: this.getElement(root, '#audio-test'),
       retryButton: this.getElement(root, '#try-again'),
       exitButton: this.getElement(root, '#exit-test'),
+      closeMirrorButton: this.getElement(root, '#close-mirror'),
+      finalLines: this.getElement(root, '#final-lines'),
       liveLabel: this.getElement(root, '#live-label'),
       timer: this.getElement(root, '#timer'),
       phaseLabel: this.getElement(root, '#phase-label'),
@@ -208,6 +238,13 @@ export class UIManager {
       </section>
 
       <section id="debug-overlay" class="debug-overlay hidden" aria-label="Debug overlay"></section>
+
+      <section id="final-screen" class="screen final-screen hidden">
+        <div class="final-panel">
+          <div id="final-lines" class="final-lines"></div>
+          <button id="close-mirror" type="button">CLOSE MIRROR</button>
+        </div>
+      </section>
     `
   }
 

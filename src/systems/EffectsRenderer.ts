@@ -76,6 +76,10 @@ export class EffectsRenderer {
       return 0.25
     }
 
+    if (phaseId === 'reflectionExit') {
+      return eventActive ? 1.2 : 0.7
+    }
+
     if (phaseId === 'delay') {
       return 0.25
     }
@@ -94,7 +98,8 @@ export class EffectsRenderer {
     const sourceHeight = this.getSourceHeight(drawableSource)
     const videoRatio = sourceWidth / sourceHeight || 4 / 3
     const canvasRatio = width / height
-    const drawHeight = canvasRatio > videoRatio ? height : width / videoRatio
+    const zoom = options.phase.id === 'reflectionExit' ? 1.04 : 1
+    const drawHeight = (canvasRatio > videoRatio ? height : width / videoRatio) * zoom
     const drawWidth = drawHeight * videoRatio
     const jitter = this.getJitter(options)
     const x = (width - drawWidth) / 2 + jitter.x
@@ -149,6 +154,7 @@ export class EffectsRenderer {
     this.drawScanlines(width, height, options)
     this.drawNoise(width, height)
     this.drawGlitchBlocks(width, height, options)
+    this.drawExitShadow(width, height, options)
 
     if (options.phase.id === 'terminated') {
       this.context.fillStyle = 'rgba(3, 3, 4, 0.74)'
@@ -157,7 +163,9 @@ export class EffectsRenderer {
   }
 
   private drawVignette(width: number, height: number, options: RenderOptions): void {
-    const finalOpacity = options.phase.id === 'reflectionDialogue'
+    const finalOpacity = options.phase.id === 'reflectionExit'
+      ? 0.82
+      : options.phase.id === 'reflectionDialogue'
       ? 0.72
       : options.predictionActive
         ? 0.68
@@ -181,7 +189,9 @@ export class EffectsRenderer {
   }
 
   private drawScanlines(width: number, height: number, options: RenderOptions): void {
-    const opacity = options.phase.id === 'reflectionDialogue'
+    const opacity = options.phase.id === 'reflectionExit'
+      ? 0.098
+      : options.phase.id === 'reflectionDialogue'
       ? 0.074
       : options.predictionActive
         ? 0.078
@@ -225,13 +235,18 @@ export class EffectsRenderer {
   }
 
   private drawGlitchBlocks(width: number, height: number, options: RenderOptions): void {
-    if (!options.mismatchActive && !options.predictionActive && options.phase.id !== 'reflectionDialogue') {
+    if (
+      !options.mismatchActive
+      && !options.predictionActive
+      && options.phase.id !== 'reflectionDialogue'
+      && options.phase.id !== 'reflectionExit'
+    ) {
       return
     }
 
     const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive ? 0.024 : 0.018)))
 
-    if (pulse < (options.phase.id === 'reflectionDialogue' ? 0.82 : options.predictionActive ? 0.68 : 0.58)) {
+    if (pulse < (options.phase.id === 'reflectionExit' ? 0.55 : options.phase.id === 'reflectionDialogue' ? 0.82 : options.predictionActive ? 0.68 : 0.58)) {
       return
     }
 
@@ -242,6 +257,35 @@ export class EffectsRenderer {
       const y = Math.abs(Math.cos(options.timestampMs * 0.012 + i * 11.73)) * height
       const blockWidth = 12 + Math.abs(Math.sin(i + options.timestampMs)) * 58
       this.context.fillRect(x, y, blockWidth, 2)
+    }
+  }
+
+  private drawExitShadow(width: number, height: number, options: RenderOptions): void {
+    if (options.phase.id !== 'reflectionExit') {
+      return
+    }
+
+    const prompt = options.phase.prompt
+    const absenceActive = prompt === 'SUBJECT COUNT: 0' || prompt === 'REFLECTION RELEASED'
+    const shadowOpacity = absenceActive ? 0.76 : 0.32
+    const gradient = this.context.createRadialGradient(
+      width / 2,
+      height * 0.48,
+      width * 0.05,
+      width / 2,
+      height * 0.48,
+      width * 0.28,
+    )
+
+    gradient.addColorStop(0, `rgba(0, 0, 0, ${shadowOpacity})`)
+    gradient.addColorStop(0.58, `rgba(0, 0, 0, ${shadowOpacity * 0.48})`)
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    this.context.fillStyle = gradient
+    this.context.fillRect(0, 0, width, height)
+
+    if (absenceActive && Math.sin(options.timestampMs * 0.012) > 0.88) {
+      this.context.fillStyle = 'rgba(0, 0, 0, 0.42)'
+      this.context.fillRect(0, 0, width, height)
     }
   }
 }

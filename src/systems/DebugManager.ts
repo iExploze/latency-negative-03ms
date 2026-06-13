@@ -18,6 +18,9 @@ export type DebugSnapshot = {
   dialogueLineIndex: number
   dialogueText: string
   selectedChoiceId: string | null
+  exitSequenceActive: boolean
+  returnSequenceActive: boolean
+  finalEndActive: boolean
   stillnessTriggerMs: number
   mismatchDurationMs: number
   jitterIntensityPx: number
@@ -58,6 +61,9 @@ export class DebugManager {
       <div><span>dialogueLine:</span> ${snapshot.dialogueLineIndex} ${snapshot.dialogueLineId}</div>
       <div><span>dialogueText:</span> ${snapshot.dialogueText}</div>
       <div><span>choice:</span> ${snapshot.selectedChoiceId ?? 'none'}</div>
+      <div><span>exitSequence:</span> ${snapshot.exitSequenceActive}</div>
+      <div><span>returnSequence:</span> ${snapshot.returnSequenceActive}</div>
+      <div><span>finalEnd:</span> ${snapshot.finalEndActive}</div>
       <div><span>stillTrigger:</span> ${snapshot.stillnessTriggerMs}ms</div>
       <div><span>mismatchDur:</span> ${snapshot.mismatchDurationMs}ms</div>
       <div><span>jitterPx:</span> ${snapshot.jitterIntensityPx.toFixed(2)}</div>

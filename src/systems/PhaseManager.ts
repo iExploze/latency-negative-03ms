@@ -1,4 +1,15 @@
-export type PhaseId = 'idle' | 'calibration' | 'delay' | 'mismatch' | 'negativeLatency' | 'reflectionDialogue' | 'terminated'
+export type PhaseId =
+  | 'idle'
+  | 'calibration'
+  | 'delay'
+  | 'mismatch'
+  | 'negativeLatency'
+  | 'reflectionDialogue'
+  | 'reflectionExit'
+  | 'return'
+  | 'finalComplete'
+  | 'finalEnd'
+  | 'terminated'
 
 export type DiagnosticReadouts = {
   latency: string
@@ -40,6 +51,8 @@ export class PhaseManager {
   private readonly delayDurationMs: number
   private readonly mismatchDurationMs: number
   private readonly negativeLatencyDurationMs: number
+  private readonly reflectionExitDurationMs: number
+  private readonly returnDurationMs: number
   private readonly promptTimeScale: number
   private readonly calibrationPromptTimeScale: number
   private phaseId: PhaseId = 'idle'
@@ -51,6 +64,8 @@ export class PhaseManager {
     this.delayDurationMs = debugMode ? 24_000 : 75_000
     this.mismatchDurationMs = debugMode ? 24_000 : 90_000
     this.negativeLatencyDurationMs = debugMode ? 22_000 : 75_000
+    this.reflectionExitDurationMs = debugMode ? 24_000 : 60_000
+    this.returnDurationMs = debugMode ? 18_000 : 45_000
     this.promptTimeScale = debugMode ? 0.4 : 1
     this.calibrationPromptTimeScale = debugMode ? this.calibrationDurationMs / 60_000 : 1
   }
@@ -62,6 +77,20 @@ export class PhaseManager {
 
   public terminate(nowMs: number): void {
     this.phaseId = 'terminated'
+    this.phaseStartedAt = nowMs
+  }
+
+  public startReflectionExit(nowMs: number): void {
+    if (this.phaseId !== 'reflectionDialogue') {
+      return
+    }
+
+    this.phaseId = 'reflectionExit'
+    this.phaseStartedAt = nowMs
+  }
+
+  public closeMirror(nowMs: number): void {
+    this.phaseId = 'finalEnd'
     this.phaseStartedAt = nowMs
   }
 
@@ -159,6 +188,74 @@ export class PhaseManager {
       }
     }
 
+    if (this.phaseId === 'reflectionExit') {
+      return {
+        id: this.phaseId,
+        label: 'TRANSFER: ACTIVE',
+        elapsedMs,
+        delayMs: 0,
+        displayedLatencyMs: 0,
+        prompt: this.getReflectionExitPrompt(elapsedMs),
+        diagnostics: {
+          latency: 'null',
+          reflection: 'released',
+          subject: 'absent',
+          sync: 'terminated',
+        },
+      }
+    }
+
+    if (this.phaseId === 'return') {
+      return {
+        id: this.phaseId,
+        label: 'MIRROR RESTORED',
+        elapsedMs,
+        delayMs: 0,
+        displayedLatencyMs: 34,
+        prompt: this.getReturnPrompt(elapsedMs),
+        diagnostics: {
+          latency: '034ms',
+          reflection: 'stable',
+          subject: 'returned',
+          sync: 'normal',
+        },
+      }
+    }
+
+    if (this.phaseId === 'finalComplete') {
+      return {
+        id: this.phaseId,
+        label: 'TEST COMPLETE',
+        elapsedMs,
+        delayMs: 0,
+        displayedLatencyMs: 0,
+        prompt: '',
+        diagnostics: {
+          latency: '--',
+          reflection: 'released',
+          subject: 'returned',
+          sync: 'closed',
+        },
+      }
+    }
+
+    if (this.phaseId === 'finalEnd') {
+      return {
+        id: this.phaseId,
+        label: 'END',
+        elapsedMs,
+        delayMs: 0,
+        displayedLatencyMs: 0,
+        prompt: '',
+        diagnostics: {
+          latency: '--',
+          reflection: 'released',
+          subject: 'returned',
+          sync: 'closed',
+        },
+      }
+    }
+
     if (this.phaseId === 'terminated') {
       return {
         id: this.phaseId,
@@ -224,6 +321,18 @@ export class PhaseManager {
 
     if (this.phaseId === 'negativeLatency' && nowMs - this.phaseStartedAt >= this.negativeLatencyDurationMs) {
       this.phaseId = 'reflectionDialogue'
+      this.phaseStartedAt = nowMs
+      return
+    }
+
+    if (this.phaseId === 'reflectionExit' && nowMs - this.phaseStartedAt >= this.reflectionExitDurationMs) {
+      this.phaseId = 'return'
+      this.phaseStartedAt = nowMs
+      return
+    }
+
+    if (this.phaseId === 'return' && nowMs - this.phaseStartedAt >= this.returnDurationMs) {
+      this.phaseId = 'finalComplete'
       this.phaseStartedAt = nowMs
     }
   }
@@ -304,5 +413,41 @@ export class PhaseManager {
 
   private scaledPromptTime(timeMs: number): number {
     return timeMs * this.promptTimeScale
+  }
+
+  private getReflectionExitPrompt(elapsedMs: number): string {
+    if (elapsedMs >= this.scaledPromptTime(43_000)) {
+      return 'REFLECTION RELEASED'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(32_000)) {
+      return 'SUBJECT COUNT: 0'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(22_000)) {
+      return 'SUBJECT COUNT: 1'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(10_000)) {
+      return 'Do not interrupt the transfer.'
+    }
+
+    return 'Stay there.'
+  }
+
+  private getReturnPrompt(elapsedMs: number): string {
+    if (elapsedMs >= this.scaledPromptTime(24_000)) {
+      return "I couldn't leave until you arrived."
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(16_000)) {
+      return 'Thank you.'
+    }
+
+    if (elapsedMs >= this.scaledPromptTime(8_000)) {
+      return 'You’re back.'
+    }
+
+    return 'Good.'
   }
 }

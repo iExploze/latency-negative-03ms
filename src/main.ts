@@ -38,6 +38,7 @@ let mismatchEvent: MismatchEvent | null = null
 let lastMismatchAt = -Infinity
 let predictionEvent: PredictionEvent | null = null
 let predictionTriggeredForPhase = false
+let finalCompleteShown = false
 
 type MismatchEvent = {
   startedAt: number
@@ -88,6 +89,7 @@ ui.elements.privacyCloseButton.addEventListener('click', () => ui.closePrivacy()
 ui.elements.privacyBackButton.addEventListener('click', () => ui.closePrivacy())
 ui.elements.audioTestButton.addEventListener('click', () => playAudioTest())
 ui.elements.exitButton.addEventListener('click', () => exitTest())
+ui.elements.closeMirrorButton.addEventListener('click', () => closeMirror())
 ui.updateDialogue(dialogueManager.update('idle', 0), (choiceId) => selectDialogueChoice(choiceId))
 window.addEventListener('beforeunload', () => camera.stop())
 
@@ -103,6 +105,7 @@ async function beginTest(): Promise<void> {
     mismatchEvent = null
     predictionEvent = null
     predictionTriggeredForPhase = false
+    finalCompleteShown = false
     lastMismatchAt = -Infinity
     hasStarted = true
     phaseManager.start(performance.now())
@@ -123,6 +126,7 @@ function exitTest(): void {
   mismatchEvent = null
   predictionEvent = null
   predictionTriggeredForPhase = false
+  finalCompleteShown = false
   phaseManager.terminate(performance.now())
   hasStarted = false
   renderer.render({
@@ -158,6 +162,15 @@ function startLoop(): void {
     updatePredictionEvent(snapshot.id, snapshot.elapsedMs, nowMs)
     const dialogueSnapshot = dialogueManager.update(snapshot.id, snapshot.elapsedMs)
 
+    if (dialogueSnapshot.readyForExit) {
+      phaseManager.startReflectionExit(nowMs)
+    }
+
+    if (snapshot.id === 'finalComplete') {
+      showFinalComplete()
+      return
+    }
+
     const mismatchFrame = mismatchEvent
       ? getMismatchFrame(nowMs)
       : null
@@ -168,10 +181,13 @@ function startLoop(): void {
     const delayedFrame = snapshot.id === 'delay' || snapshot.id === 'mismatch' || snapshot.id === 'reflectionDialogue'
       ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
       : null
-    const source = predictionFrame ?? mismatchFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
-    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : delayedFrame ? 'delayed' : 'live'
+    const exitFrame = snapshot.id === 'reflectionExit'
+      ? frameBuffer.getFrameAtDelay(nowMs, Math.min(3600, 800 + snapshot.elapsedMs * 0.08))
+      : null
+    const source = predictionFrame ?? mismatchFrame ?? exitFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
+    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : exitFrame || delayedFrame ? 'delayed' : 'live'
     const predictionEventActive = predictionEvent !== null
-    const liveState = getLiveState(snapshot.id, nowMs)
+    const liveState = getLiveState(snapshot.id, snapshot.elapsedMs, nowMs)
 
     renderer.render({
       source,
@@ -203,6 +219,9 @@ function startLoop(): void {
       dialogueLineIndex: dialogueSnapshot.lineIndex,
       dialogueText: dialogueSnapshot.text,
       selectedChoiceId: dialogueSnapshot.selectedChoiceId,
+      exitSequenceActive: snapshot.id === 'reflectionExit',
+      returnSequenceActive: snapshot.id === 'return',
+      finalEndActive: snapshot.id === 'finalEnd',
       stillnessTriggerMs: STILLNESS_TRIGGER_MS,
       mismatchDurationMs: MISMATCH_EVENT_DURATION_MS,
       jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null || predictionEventActive),
@@ -214,6 +233,36 @@ function startLoop(): void {
   }
 
   animationFrameId = requestAnimationFrame(tick)
+}
+
+function showFinalComplete(): void {
+  if (finalCompleteShown) {
+    return
+  }
+
+  finalCompleteShown = true
+  camera.stop()
+  frameBuffer.clear()
+  ui.updateDialogue(dialogueManager.update('idle', 0), (choiceId) => selectDialogueChoice(choiceId))
+  ui.showFinalComplete()
+  hasStarted = false
+  stopLoop()
+}
+
+function closeMirror(): void {
+  camera.stop()
+  frameBuffer.clear()
+  motionDetector.reset()
+  dialogueManager.reset()
+  phaseManager.closeMirror(performance.now())
+  ui.showWrongSide()
+  debugManager.clear()
+  hasStarted = false
+  stopLoop()
+
+  window.setTimeout(() => {
+    ui.showFinalEnd()
+  }, 1800)
 }
 
 function selectDialogueChoice(choiceId: string): void {
@@ -327,7 +376,12 @@ function getAvailablePredictionSource(): PredictionFootageSource {
     : 'genericBufferFallback'
 }
 
-function getLiveState(phaseId: string, nowMs: number): { label: string; isQuestion: boolean } {
+function getLiveState(phaseId: string, phaseElapsedMs: number, nowMs: number): { label: string; isQuestion: boolean } {
+  if (phaseId === 'return') {
+    const flicker = (phaseElapsedMs > 3500 && phaseElapsedMs < 4300) || (phaseElapsedMs > 11_000 && phaseElapsedMs < 11_650)
+    return { label: flicker ? 'LIVE?' : 'LIVE', isQuestion: flicker }
+  }
+
   if (phaseId !== 'negativeLatency' && phaseId !== 'reflectionDialogue') {
     return { label: 'LIVE', isQuestion: false }
   }
