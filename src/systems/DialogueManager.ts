@@ -53,7 +53,7 @@ export class DialogueManager {
   private wasDialoguePhase = false
 
   public constructor(debugMode = false) {
-    this.timeScale = debugMode ? 0.4 : 1
+    this.timeScale = debugMode ? 0.4 : 0.75
   }
 
   public update(phaseId: PhaseId, phaseElapsedMs: number): DialogueSnapshot {

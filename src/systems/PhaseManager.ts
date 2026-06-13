@@ -59,14 +59,14 @@ export class PhaseManager {
   private phaseStartedAt = 0
 
   public constructor(debugMode = false) {
-    this.calibrationDurationMs = debugMode ? 10_000 : 60_000
-    this.delayRampDurationMs = debugMode ? 20_000 : 75_000
-    this.delayDurationMs = debugMode ? 24_000 : 75_000
-    this.mismatchDurationMs = debugMode ? 24_000 : 90_000
-    this.negativeLatencyDurationMs = debugMode ? 22_000 : 75_000
-    this.reflectionExitDurationMs = debugMode ? 24_000 : 60_000
-    this.returnDurationMs = debugMode ? 18_000 : 45_000
-    this.promptTimeScale = debugMode ? 0.4 : 1
+    this.calibrationDurationMs = debugMode ? 10_000 : 45_000
+    this.delayRampDurationMs = debugMode ? 20_000 : 52_000
+    this.delayDurationMs = debugMode ? 24_000 : 52_000
+    this.mismatchDurationMs = debugMode ? 24_000 : 60_000
+    this.negativeLatencyDurationMs = debugMode ? 22_000 : 55_000
+    this.reflectionExitDurationMs = debugMode ? 24_000 : 42_000
+    this.returnDurationMs = debugMode ? 18_000 : 32_000
+    this.promptTimeScale = debugMode ? 0.4 : 0.72
     this.calibrationPromptTimeScale = debugMode ? this.calibrationDurationMs / 60_000 : 1
   }
 
@@ -343,19 +343,19 @@ export class PhaseManager {
   }
 
   private getDelayPrompt(elapsedMs: number): string {
-    if (elapsedMs >= 65_000) {
+    if (elapsedMs >= this.scaledPromptTime(65_000)) {
       return 'Minor latency detected.'
     }
 
-    if (elapsedMs >= 50_000) {
+    if (elapsedMs >= this.scaledPromptTime(50_000)) {
       return 'Please remain still.'
     }
 
-    if (elapsedMs >= 35_000) {
+    if (elapsedMs >= this.scaledPromptTime(35_000)) {
       return 'Lower your hand.'
     }
 
-    if (elapsedMs >= 15_000) {
+    if (elapsedMs >= this.scaledPromptTime(15_000)) {
       return 'Raise your right hand.'
     }
 

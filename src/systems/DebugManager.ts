@@ -1,6 +1,10 @@
 export type DebugSnapshot = {
   phase: string
   activeEvent: string
+  weirdEventActive: boolean
+  weirdEventMode: string
+  transferMode: string
+  audioEvent: string
   elapsedMs: number
   delayMs: number
   displayedLatencyMs: number
@@ -46,6 +50,9 @@ export class DebugManager {
     this.element.innerHTML = `
       <div><span>phase:</span> ${snapshot.phase}</div>
       <div><span>activeEvent:</span> ${snapshot.activeEvent}</div>
+      <div><span>weirdEvent:</span> ${snapshot.weirdEventActive} ${snapshot.weirdEventMode}</div>
+      <div><span>transferMode:</span> ${snapshot.transferMode}</div>
+      <div><span>audioEvent:</span> ${snapshot.audioEvent}</div>
       <div><span>elapsed:</span> ${(snapshot.elapsedMs / 1000).toFixed(1)}s</div>
       <div><span>delayMs:</span> ${Math.round(snapshot.delayMs)}</div>
       <div><span>displayedLatency:</span> ${Math.round(snapshot.displayedLatencyMs)}ms</div>

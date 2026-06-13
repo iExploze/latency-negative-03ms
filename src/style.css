@@ -338,8 +338,7 @@ h2 {
 }
 
 .timer,
-.phase-label,
-.diagnostics {
+.phase-label {
   color: var(--muted);
   font-size: 12px;
 }
@@ -347,6 +346,9 @@ h2 {
 .phase-label {
   text-align: right;
   color: var(--ok);
+  font-size: clamp(15px, 1.45vw, 20px);
+  font-weight: 700;
+  text-shadow: 0 0 18px rgba(143, 174, 155, 0.14);
 }
 
 .prompt {
@@ -429,11 +431,13 @@ h2 {
   right: 24px;
   bottom: 24px;
   min-width: 190px;
-  padding: 12px;
+  padding: 14px 15px;
   border: 1px solid rgba(42, 46, 53, 0.72);
   border-radius: 4px;
+  color: var(--muted);
   background: var(--panel-soft);
-  line-height: 1.7;
+  font-size: clamp(13px, 1.1vw, 16px);
+  line-height: 1.62;
   text-align: left;
 }
 
@@ -448,6 +452,22 @@ h2 {
   z-index: 5;
   color: var(--text);
   background: rgba(184, 74, 74, 0.1);
+  border-color: rgba(184, 74, 74, 0.58);
+}
+
+.mute-button {
+  position: fixed;
+  left: 144px;
+  bottom: 24px;
+  z-index: 5;
+  min-height: 42px;
+  color: var(--muted);
+  background: rgba(3, 3, 4, 0.5);
+  border-color: rgba(232, 232, 232, 0.22);
+}
+
+.mute-button[aria-pressed="true"] {
+  color: var(--danger);
   border-color: rgba(184, 74, 74, 0.58);
 }
 
@@ -526,6 +546,12 @@ h2 {
   .exit-button {
     left: 16px;
     bottom: 16px;
+  }
+
+  .mute-button {
+    right: 16px;
+    bottom: 16px;
+    left: auto;
   }
 
   .debug-overlay {

@@ -6,6 +6,9 @@ type RenderOptions = {
   timestampMs: number
   mismatchActive: boolean
   predictionActive: boolean
+  weirdActive: boolean
+  weirdMode: string
+  transferMode: string
   extraHorizontalFlip: boolean
 }
 
@@ -99,7 +102,8 @@ export class EffectsRenderer {
     const videoRatio = sourceWidth / sourceHeight || 4 / 3
     const canvasRatio = width / height
     const transferProgress = this.getTransferProgress(options)
-    const zoom = options.phase.id === 'reflectionExit' ? 1.04 + transferProgress * 0.035 : 1
+    const weirdZoom = options.weirdMode === 'zoomPulse' || options.transferMode === 'warped' ? 0.035 : 0
+    const zoom = options.phase.id === 'reflectionExit' ? 1.04 + transferProgress * 0.07 + weirdZoom : 1 + weirdZoom
     const drawHeight = (canvasRatio > videoRatio ? height : width / videoRatio) * zoom
     const drawWidth = drawHeight * videoRatio
     const jitter = this.getJitter(options)
@@ -184,6 +188,7 @@ export class EffectsRenderer {
     this.drawScanlines(width, height, options)
     this.drawNoise(width, height)
     this.drawGlitchBlocks(width, height, options)
+    this.drawWeirdOverlays(width, height, options)
     this.drawExitShadow(width, height, options)
 
     if (options.phase.id === 'terminated') {
@@ -198,6 +203,8 @@ export class EffectsRenderer {
       ? 0.72 + transferProgress * 0.2
       : options.phase.id === 'reflectionDialogue'
       ? 0.72
+      : options.weirdActive
+        ? 0.66
       : options.predictionActive
         ? 0.68
         : options.phase.id === 'negativeLatency'
@@ -225,6 +232,8 @@ export class EffectsRenderer {
       ? 0.08 + transferProgress * 0.065
       : options.phase.id === 'reflectionDialogue'
       ? 0.074
+      : options.weirdActive
+        ? 0.09
       : options.predictionActive
         ? 0.078
         : options.phase.id === 'negativeLatency'
@@ -270,6 +279,7 @@ export class EffectsRenderer {
     if (
       !options.mismatchActive
       && !options.predictionActive
+      && !options.weirdActive
       && options.phase.id !== 'reflectionDialogue'
       && options.phase.id !== 'reflectionExit'
     ) {
@@ -277,26 +287,70 @@ export class EffectsRenderer {
     }
 
     const transferProgress = this.getTransferProgress(options)
-    const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive ? 0.024 : options.phase.id === 'reflectionExit' ? 0.018 + transferProgress * 0.026 : 0.018)))
+    const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive || options.weirdActive ? 0.024 : options.phase.id === 'reflectionExit' ? 0.018 + transferProgress * 0.026 : 0.018)))
 
-    if (pulse < (options.phase.id === 'reflectionExit' ? 0.62 - transferProgress * 0.32 : options.phase.id === 'reflectionDialogue' ? 0.82 : options.predictionActive ? 0.68 : 0.58)) {
+    if (pulse < (options.phase.id === 'reflectionExit' ? 0.54 - transferProgress * 0.38 : options.phase.id === 'reflectionDialogue' ? 0.76 : options.predictionActive || options.weirdActive ? 0.58 : 0.58)) {
       return
     }
 
     this.context.fillStyle = options.predictionActive
       ? 'rgba(232, 232, 232, 0.11)'
+      : options.weirdActive
+        ? 'rgba(232, 232, 232, 0.13)'
       : options.phase.id === 'reflectionExit'
-        ? `rgba(232, 232, 232, ${0.07 + transferProgress * 0.07})`
+        ? `rgba(232, 232, 232, ${0.1 + transferProgress * 0.12})`
         : 'rgba(232, 232, 232, 0.08)'
 
-    const blockCount = options.phase.id === 'reflectionExit' ? 5 + Math.floor(transferProgress * 7) : 7
+    const blockCount = options.phase.id === 'reflectionExit' ? 8 + Math.floor(transferProgress * 12) : 7
 
     for (let i = 0; i < blockCount; i += 1) {
       const x = Math.abs(Math.sin(options.timestampMs * 0.01 + i * 19.19)) * width
       const y = Math.abs(Math.cos(options.timestampMs * 0.012 + i * 11.73)) * height
-      const blockWidth = 12 + Math.abs(Math.sin(i + options.timestampMs)) * (58 + transferProgress * 72)
+      const blockWidth = 12 + Math.abs(Math.sin(i + options.timestampMs)) * (58 + transferProgress * 132)
       const blockHeight = options.phase.id === 'reflectionExit' && i % 4 === 0 ? 4 : 2
       this.context.fillRect(x, y, blockWidth, blockHeight)
+    }
+  }
+
+  private drawWeirdOverlays(width: number, height: number, options: RenderOptions): void {
+    if (!options.weirdActive && options.phase.id !== 'reflectionExit') {
+      return
+    }
+
+    const transferProgress = this.getTransferProgress(options)
+    const tearCount = options.phase.id === 'reflectionExit' ? 2 + Math.floor(transferProgress * 6) : 2
+
+    this.context.save()
+    for (let i = 0; i < tearCount; i += 1) {
+      const y = Math.abs(Math.sin(options.timestampMs * 0.006 + i * 8.31)) * height
+      const tearHeight = options.phase.id === 'reflectionExit' ? 2 + transferProgress * 10 : 2
+      const offset = Math.sin(options.timestampMs * 0.02 + i) * (8 + transferProgress * 34)
+      this.context.globalAlpha = 0.08 + transferProgress * 0.14
+      this.context.drawImage(this.canvas, 0, y, width, tearHeight, offset, y, width, tearHeight)
+    }
+    this.context.restore()
+
+    if (options.weirdMode === 'shadowPulse' || options.phase.id === 'reflectionExit') {
+      const opacity = options.weirdMode === 'shadowPulse' ? 0.28 : 0.08 + transferProgress * 0.18
+      const gradient = this.context.createRadialGradient(
+        width / 2,
+        height * 0.48,
+        width * 0.08,
+        width / 2,
+        height * 0.48,
+        width * 0.32,
+      )
+      gradient.addColorStop(0, `rgba(0, 0, 0, ${opacity})`)
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+      this.context.fillStyle = gradient
+      this.context.fillRect(0, 0, width, height)
+    }
+
+    if (options.weirdMode === 'scanBurst' || options.phase.id === 'reflectionExit') {
+      this.context.fillStyle = `rgba(255, 255, 255, ${options.weirdActive ? 0.11 : 0.05 + transferProgress * 0.07})`
+      for (let y = 2; y < height; y += 12) {
+        this.context.fillRect(0, y, width, 2)
+      }
     }
   }
 

@@ -6,7 +6,7 @@ Use this checklist before release. Test on a desktop webcam whenever possible.
 
 - [ ] Start screen loads with title, content warning, privacy footer, fullscreen recommendation, and buttons.
 - [ ] Privacy modal opens and closes cleanly.
-- [ ] Fullscreen button requests fullscreen when allowed and fails silently when denied.
+- [ ] BEGIN TEST requests fullscreen from the click gesture when allowed and fails silently when denied.
 - [ ] BEGIN TEST requests camera permission and does not request microphone permission.
 - [ ] Calibration prompts are readable and paced clearly.
 - [ ] Delayed reflection phase still says LIVE while the frame delay increases.

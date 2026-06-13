@@ -1,4 +1,5 @@
 import './style.css'
+import { AudioManager, type AudioCue } from './systems/AudioManager'
 import { CameraSystem } from './systems/CameraSystem'
 import { DebugManager } from './systems/DebugManager'
 import { DialogueManager } from './systems/DialogueManager'
@@ -31,6 +32,7 @@ const motionDetector = new MotionDetector()
 const phaseManager = new PhaseManager(debugMode)
 const dialogueManager = new DialogueManager(debugMode)
 const renderer = new EffectsRenderer(mirrorCanvas)
+const audio = new AudioManager()
 const debugManager = new DebugManager(ui.elements.debugOverlay, new URLSearchParams(window.location.search))
 let animationFrameId = 0
 let hasStarted = false
@@ -39,6 +41,12 @@ let lastMismatchAt = -Infinity
 let predictionEvent: PredictionEvent | null = null
 let predictionTriggeredForPhase = false
 let predictionRecoveryUntil = 0
+let weirdEvent: WeirdEvent | null = null
+let nextWeirdEventAt = 0
+let lastPromptText = ''
+let lastLiveQuestion = false
+let lastAudioEvent = 'none'
+const lastAudioCueAt = new Map<AudioCue, number>()
 let finalCompleteShown = false
 
 type MismatchEvent = {
@@ -59,6 +67,20 @@ type PredictionEvent = {
 }
 
 type PredictionFootageSource = 'oppositeHandFromRightHandClip' | 'rightHandClip' | 'genericBufferFallback'
+type WeirdEventMode = 'freeze' | 'oldFlash' | 'delayCut' | 'flipPulse' | 'shadowPulse' | 'scanBurst' | 'zoomPulse'
+type TransferMode = 'none' | 'oldFrame' | 'clip' | 'liveBurst' | 'frozen' | 'warped'
+
+type WeirdEvent = {
+  startedAt: number
+  durationMs: number
+  mode: WeirdEventMode
+  frame: ImageData | null
+}
+
+type TransferSource = {
+  source: CanvasImageSource | ImageData | null
+  mode: TransferMode
+}
 
 const STILLNESS_TRIGGER_MS = 2400
 const MISMATCH_COOLDOWN_MS = 15000
@@ -68,8 +90,9 @@ const MISMATCH_CLIP_LOOKBACK_MS = 14_000
 const MISMATCH_CLIP_SPEED = 1.55
 const HAND_CLIP_NAME = 'calibrationHandRaise'
 const HAND_CLIP_MAX_FRAMES = 70
-const HAND_CAPTURE_START_MS = debugMode ? 5_000 : 30_000
-const HAND_CAPTURE_END_MS = debugMode ? 6_350 : 38_000
+const CALIBRATION_TIME_SCALE = debugMode ? 10_000 / 60_000 : 45_000 / 60_000
+const HAND_CAPTURE_START_MS = 30_000 * CALIBRATION_TIME_SCALE
+const HAND_CAPTURE_END_MS = 38_000 * CALIBRATION_TIME_SCALE
 const PREDICTION_EVENT_DURATION_MS = 3200
 const PREDICTION_FREEZE_MS = 150
 const PREDICTION_CLIP_LOOKBACK_MS = 16_000
@@ -79,6 +102,7 @@ ui.showStart()
 
 ui.elements.startButton.addEventListener('click', () => {
   void requestFullscreenBestEffort()
+  void audio.unlock()
   void beginTest()
 })
 
@@ -89,9 +113,13 @@ ui.elements.retryButton.addEventListener('click', () => {
 ui.elements.privacyButton.addEventListener('click', () => ui.showPrivacy())
 ui.elements.privacyCloseButton.addEventListener('click', () => ui.closePrivacy())
 ui.elements.privacyBackButton.addEventListener('click', () => ui.closePrivacy())
-ui.elements.audioTestButton.addEventListener('click', () => playAudioTest())
-ui.elements.fullscreenButton.addEventListener('click', () => {
-  void requestFullscreenBestEffort()
+ui.elements.audioTestButton.addEventListener('click', () => {
+  void audio.unlock().then(() => audio.play('test'))
+})
+ui.elements.muteButton.addEventListener('click', () => {
+  const muted = audio.toggleMute()
+  ui.elements.muteButton.setAttribute('aria-pressed', String(muted))
+  ui.elements.muteButton.textContent = muted ? 'UNMUTE' : 'MUTE'
 })
 ui.elements.exitButton.addEventListener('click', () => exitTest())
 ui.elements.closeMirrorButton.addEventListener('click', () => closeMirror())
@@ -112,6 +140,11 @@ async function beginTest(): Promise<void> {
     predictionEvent = null
     predictionTriggeredForPhase = false
     predictionRecoveryUntil = 0
+    weirdEvent = null
+    nextWeirdEventAt = 0
+    lastPromptText = ''
+    lastLiveQuestion = false
+    lastAudioEvent = 'none'
     finalCompleteShown = false
     lastMismatchAt = -Infinity
     hasStarted = true
@@ -134,7 +167,13 @@ function exitTest(): void {
   predictionEvent = null
   predictionTriggeredForPhase = false
   predictionRecoveryUntil = 0
+  weirdEvent = null
+  nextWeirdEventAt = 0
+  lastPromptText = ''
+  lastLiveQuestion = false
+  lastAudioEvent = 'none'
   finalCompleteShown = false
+  audio.stop()
   phaseManager.terminate(performance.now())
   hasStarted = false
   renderer.render({
@@ -143,6 +182,9 @@ function exitTest(): void {
     timestampMs: performance.now(),
     mismatchActive: false,
     predictionActive: false,
+    weirdActive: false,
+    weirdMode: 'none',
+    transferMode: 'none',
     extraHorizontalFlip: false,
   })
   debugManager.clear()
@@ -168,6 +210,7 @@ function startLoop(): void {
     const motionState = isCameraReady ? motionDetector.updateFromVideo(cameraVideo, nowMs) : motionDetector.getState()
     updateMismatchEvent(snapshot.id, nowMs, motionState)
     updatePredictionEvent(snapshot.id, snapshot.elapsedMs, nowMs)
+    updateWeirdEvent(snapshot.id, nowMs)
     const dialogueSnapshot = dialogueManager.update(snapshot.id, snapshot.elapsedMs)
 
     if (dialogueSnapshot.readyForExit) {
@@ -186,17 +229,23 @@ function startLoop(): void {
       ? getPredictionFrame(nowMs)
       : null
     const predictionUsesExtraFlip = predictionEvent?.source === 'oppositeHandFromRightHandClip'
+    const weirdFrame = weirdEvent
+      ? getWeirdFrame()
+      : null
+    const weirdUsesExtraFlip = weirdEvent?.mode === 'flipPulse'
     const delayedFrame = snapshot.id === 'delay' || snapshot.id === 'mismatch' || snapshot.id === 'reflectionDialogue'
       ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
       : null
-    const transferFrame = snapshot.id === 'reflectionExit'
-      ? getTransferFrame(snapshot.elapsedMs, nowMs)
-      : null
-    const source = predictionFrame ?? mismatchFrame ?? transferFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
-    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : transferFrame ? 'transfer' : delayedFrame ? 'delayed' : 'live'
+    const transferSource = snapshot.id === 'reflectionExit'
+      ? getTransferSource(snapshot.elapsedMs, nowMs, isCameraReady ? cameraVideo : null)
+      : { source: null, mode: 'none' as TransferMode }
+    const source = predictionFrame ?? mismatchFrame ?? weirdFrame ?? transferSource.source ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
+    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : transferSource.source ? 'transfer' : weirdFrame || delayedFrame ? 'delayed' : 'live'
     const predictionEventActive = predictionEvent !== null
+    const weirdEventActive = weirdEvent !== null
     const predictionVisualActive = predictionEventActive || nowMs < predictionRecoveryUntil
     const liveState = getLiveState(snapshot.id, snapshot.elapsedMs, nowMs)
+    updateAudioState(snapshot.id, snapshot.prompt, liveState.isQuestion, mismatchEvent !== null, predictionEventActive, weirdEventActive, transferSource.mode)
 
     renderer.render({
       source,
@@ -204,13 +253,20 @@ function startLoop(): void {
       timestampMs: nowMs,
       mismatchActive: mismatchEvent !== null,
       predictionActive: predictionVisualActive,
-      extraHorizontalFlip: predictionUsesExtraFlip,
+      weirdActive: weirdEventActive,
+      weirdMode: weirdEvent?.mode ?? 'none',
+      transferMode: transferSource.mode,
+      extraHorizontalFlip: predictionUsesExtraFlip || weirdUsesExtraFlip,
     })
     ui.updateHud(snapshot, liveState.label)
     ui.updateDialogue(dialogueSnapshot, (choiceId) => selectDialogueChoice(choiceId))
     debugManager.update({
       phase: snapshot.id,
-      activeEvent: getActiveEventLabel(snapshot.id, mismatchEvent !== null, predictionEventActive, dialogueSnapshot.active),
+      activeEvent: getActiveEventLabel(snapshot.id, mismatchEvent !== null, predictionEventActive, weirdEventActive, dialogueSnapshot.active),
+      weirdEventActive,
+      weirdEventMode: weirdEvent?.mode ?? 'none',
+      transferMode: transferSource.mode,
+      audioEvent: lastAudioEvent,
       elapsedMs: snapshot.elapsedMs,
       delayMs: snapshot.delayMs,
       displayedLatencyMs: snapshot.displayedLatencyMs,
@@ -253,6 +309,7 @@ function showFinalComplete(): void {
   finalCompleteShown = true
   camera.stop()
   frameBuffer.clear()
+  audio.stop()
   ui.updateDialogue(dialogueManager.update('idle', 0), (choiceId) => selectDialogueChoice(choiceId))
   ui.showFinalComplete()
   hasStarted = false
@@ -260,6 +317,7 @@ function showFinalComplete(): void {
 }
 
 function closeMirror(): void {
+  playAudio('final')
   camera.stop()
   frameBuffer.clear()
   motionDetector.reset()
@@ -267,6 +325,10 @@ function closeMirror(): void {
   predictionEvent = null
   predictionTriggeredForPhase = false
   predictionRecoveryUntil = 0
+  weirdEvent = null
+  nextWeirdEventAt = 0
+  lastAudioEvent = 'none'
+  audio.stop()
   phaseManager.closeMirror(performance.now())
   ui.showWrongSide()
   debugManager.clear()
@@ -326,6 +388,7 @@ function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: n
   const source = getAvailablePredictionSource()
   predictionTriggeredForPhase = true
   predictionRecoveryUntil = 0
+  playAudio('negative')
   predictionEvent = {
     startedAt: nowMs,
     durationMs: PREDICTION_EVENT_DURATION_MS,
@@ -355,6 +418,7 @@ function updateMismatchEvent(phaseId: string, nowMs: number, motionState: Motion
       frozenFrame: frameBuffer.getFrameAtDelay(nowMs, 1500),
     }
     lastMismatchAt = nowMs
+    playAudio('mismatch')
   }
 }
 
@@ -394,34 +458,137 @@ function getMismatchFrame(nowMs: number): ImageData | null {
   return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * MISMATCH_CLIP_SPEED)
 }
 
-function getTransferFrame(phaseElapsedMs: number, nowMs: number): ImageData | null {
+function getWeirdFrame(): ImageData | null {
+  if (!weirdEvent) {
+    return null
+  }
+
+  if (weirdEvent.mode === 'freeze' || weirdEvent.mode === 'oldFlash' || weirdEvent.mode === 'delayCut') {
+    return weirdEvent.frame
+  }
+
+  return null
+}
+
+function updateWeirdEvent(phaseId: string, nowMs: number): void {
+  if (weirdEvent && nowMs - weirdEvent.startedAt >= weirdEvent.durationMs) {
+    weirdEvent = null
+  }
+
+  const canGlitch = phaseId === 'mismatch'
+    || phaseId === 'negativeLatency'
+    || phaseId === 'reflectionDialogue'
+    || phaseId === 'reflectionExit'
+
+  if (!canGlitch) {
+    weirdEvent = null
+    nextWeirdEventAt = nowMs + 4000
+    return
+  }
+
+  if (weirdEvent || nowMs < nextWeirdEventAt) {
+    return
+  }
+
+  const mode = getNextWeirdMode(phaseId, nowMs)
+  const durationMs = getWeirdDuration(phaseId, mode, nowMs)
+  const frame = mode === 'oldFlash'
+    ? frameBuffer.getFrameAtDelay(nowMs, 2500 + Math.abs(Math.sin(nowMs * 0.003)) * 18_000)
+    : mode === 'delayCut'
+      ? frameBuffer.getFrameAtDelay(nowMs, 650 + Math.abs(Math.cos(nowMs * 0.004)) * 1900)
+      : mode === 'freeze'
+        ? frameBuffer.getFrameAtDelay(nowMs, 120)
+        : null
+
+  weirdEvent = {
+    startedAt: nowMs,
+    durationMs,
+    mode,
+    frame,
+  }
+  playAudio('glitch')
+  nextWeirdEventAt = nowMs + getNextWeirdDelay(phaseId, nowMs)
+}
+
+function getNextWeirdMode(phaseId: string, nowMs: number): WeirdEventMode {
+  const modes: WeirdEventMode[] = phaseId === 'reflectionExit'
+    ? ['oldFlash', 'delayCut', 'freeze', 'flipPulse', 'shadowPulse', 'scanBurst', 'zoomPulse']
+    : phaseId === 'reflectionDialogue'
+      ? ['oldFlash', 'delayCut', 'shadowPulse', 'scanBurst']
+      : phaseId === 'negativeLatency'
+        ? ['delayCut', 'flipPulse', 'zoomPulse', 'oldFlash']
+        : ['freeze', 'delayCut', 'scanBurst']
+  const index = Math.floor(Math.abs(Math.sin(nowMs * 0.0017)) * modes.length) % modes.length
+  return modes[index]
+}
+
+function getWeirdDuration(phaseId: string, mode: WeirdEventMode, nowMs: number): number {
+  const base = mode === 'freeze' ? 180 : mode === 'oldFlash' ? 220 : mode === 'flipPulse' ? 140 : 260
+  const extra = Math.abs(Math.sin(nowMs * 0.0023)) * (phaseId === 'reflectionExit' ? 360 : 180)
+  return base + extra
+}
+
+function getNextWeirdDelay(phaseId: string, nowMs: number): number {
+  const randomish = Math.abs(Math.cos(nowMs * 0.0019))
+
+  if (phaseId === 'reflectionExit') {
+    return 650 + randomish * 900
+  }
+
+  if (phaseId === 'reflectionDialogue') {
+    return 2600 + randomish * 2800
+  }
+
+  if (phaseId === 'negativeLatency') {
+    return 2100 + randomish * 2500
+  }
+
+  return 3500 + randomish * 4200
+}
+
+function getTransferSource(phaseElapsedMs: number, nowMs: number, liveSource: CanvasImageSource | null): TransferSource {
   const intervalMs = getTransferSwitchIntervalMs(phaseElapsedMs)
   const slot = Math.floor(phaseElapsedMs / intervalMs)
+  const transferProgress = Math.min(1, phaseElapsedMs / (debugMode ? 24_000 : 42_000))
+
+  if (liveSource && slot % (transferProgress > 0.66 ? 4 : 6) === 2) {
+    return { source: liveSource, mode: 'liveBurst' }
+  }
+
+  if (slot % 7 === 4) {
+    return {
+      source: frameBuffer.getFrameAtDelay(nowMs, 120 + Math.abs(Math.sin(slot)) * 400),
+      mode: 'frozen',
+    }
+  }
 
   if (frameBuffer.getClipFrameCount(HAND_CLIP_NAME) >= 12 && slot % 5 === 0) {
     const clipProgress = Math.abs(Math.sin(slot * 0.77 + phaseElapsedMs * 0.0012))
-    return frameBuffer.getClipFrameAtProgress(HAND_CLIP_NAME, clipProgress)
+    return { source: frameBuffer.getClipFrameAtProgress(HAND_CLIP_NAME, clipProgress), mode: 'clip' }
   }
 
   const hash = Math.abs(Math.sin(slot * 12.9898 + 78.233))
   const secondaryHash = Math.abs(Math.cos(slot * 4.187 + 19.19))
   const lookbackMs = 700 + hash * 25_000
   const driftMs = (secondaryHash - 0.5) * 1100
-  return frameBuffer.getFrameAtDelay(nowMs, lookbackMs + driftMs)
+  return {
+    source: frameBuffer.getFrameAtDelay(nowMs, lookbackMs + driftMs),
+    mode: slot % 3 === 0 ? 'warped' : 'oldFrame',
+  }
 }
 
 function getTransferSwitchIntervalMs(phaseElapsedMs: number): number {
-  const transferProgress = Math.min(1, phaseElapsedMs / (debugMode ? 24_000 : 60_000))
+  const transferProgress = Math.min(1, phaseElapsedMs / (debugMode ? 24_000 : 42_000))
 
   if (transferProgress < 0.34) {
-    return 760 - transferProgress * 470
+    return 680 - transferProgress * 520
   }
 
   if (transferProgress < 0.72) {
-    return 390 - (transferProgress - 0.34) * 610
+    return 330 - (transferProgress - 0.34) * 560
   }
 
-  return 160 - (transferProgress - 0.72) * 285
+  return 130 - (transferProgress - 0.72) * 250
 }
 
 function getAvailablePredictionSource(): PredictionFootageSource {
@@ -442,6 +609,68 @@ function getLiveState(phaseId: string, phaseElapsedMs: number, nowMs: number): {
 
   const flicker = Math.sin(nowMs * 0.011) > 0.72 || Math.sin(nowMs * 0.027) > 0.84
   return { label: flicker ? 'LIVE?' : 'LIVE', isQuestion: flicker }
+}
+
+function updateAudioState(
+  phaseId: string,
+  prompt: string,
+  liveQuestion: boolean,
+  mismatchActive: boolean,
+  predictionActive: boolean,
+  weirdActive: boolean,
+  transferMode: TransferMode,
+): void {
+  if (prompt && prompt !== lastPromptText) {
+    playAudio('prompt')
+    lastPromptText = prompt
+  }
+
+  if (liveQuestion && !lastLiveQuestion) {
+    playAudio('liveFlicker')
+  }
+  lastLiveQuestion = liveQuestion
+
+  if (transferMode !== 'none' && transferMode !== 'oldFrame') {
+    playAudio('transfer')
+  } else if (weirdActive) {
+    playAudio('glitch')
+  } else if (mismatchActive) {
+    lastAudioEvent = 'mismatch'
+  } else if (predictionActive) {
+    lastAudioEvent = 'negative'
+  }
+
+  if (phaseId === 'reflectionExit') {
+    audio.setRumble(0.55)
+    return
+  }
+
+  if (phaseId === 'negativeLatency') {
+    audio.setRumble(0.22)
+    return
+  }
+
+  audio.setRumble(0)
+}
+
+function playAudio(cue: AudioCue): void {
+  const nowMs = performance.now()
+  const minInterval = cue === 'transfer'
+    ? 520
+    : cue === 'glitch'
+      ? 320
+      : cue === 'liveFlicker'
+        ? 140
+        : 0
+  const lastPlayedAt = lastAudioCueAt.get(cue) ?? -Infinity
+
+  if (nowMs - lastPlayedAt < minInterval) {
+    return
+  }
+
+  audio.play(cue)
+  lastAudioCueAt.set(cue, nowMs)
+  lastAudioEvent = cue
 }
 
 async function requestFullscreenBestEffort(): Promise<void> {
@@ -465,6 +694,7 @@ function getActiveEventLabel(
   phaseId: string,
   mismatchActive: boolean,
   predictionActive: boolean,
+  weirdActive: boolean,
   dialogueActive: boolean,
 ): string {
   if (mismatchActive) {
@@ -473,6 +703,10 @@ function getActiveEventLabel(
 
   if (predictionActive) {
     return 'prediction'
+  }
+
+  if (weirdActive) {
+    return 'weird'
   }
 
   if (dialogueActive) {
@@ -512,22 +746,4 @@ function showCameraError(error: unknown): void {
     ? 'The test requires a camera.'
     : 'Mirror initialization failed.'
   ui.showDenied('No reflection device found.', message)
-}
-
-function playAudioTest(): void {
-  const context = new AudioContext()
-  const oscillator = context.createOscillator()
-  const gain = context.createGain()
-
-  oscillator.type = 'sine'
-  oscillator.frequency.setValueAtTime(176, context.currentTime)
-  oscillator.frequency.exponentialRampToValueAtTime(88, context.currentTime + 1.8)
-  gain.gain.setValueAtTime(0.0001, context.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.08)
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 2)
-
-  oscillator.connect(gain)
-  gain.connect(context.destination)
-  oscillator.start()
-  oscillator.stop(context.currentTime + 2)
 }

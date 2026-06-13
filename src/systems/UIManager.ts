@@ -12,7 +12,7 @@ type UIElements = {
   privacyCloseButton: HTMLButtonElement
   privacyBackButton: HTMLButtonElement
   audioTestButton: HTMLButtonElement
-  fullscreenButton: HTMLButtonElement
+  muteButton: HTMLButtonElement
   retryButton: HTMLButtonElement
   exitButton: HTMLButtonElement
   closeMirrorButton: HTMLButtonElement
@@ -170,7 +170,7 @@ export class UIManager {
       privacyCloseButton: this.getElement(root, '#privacy-understood'),
       privacyBackButton: this.getElement(root, '#privacy-back'),
       audioTestButton: this.getElement(root, '#audio-test'),
-      fullscreenButton: this.getElement(root, '#fullscreen-test'),
+      muteButton: this.getElement(root, '#mute-audio'),
       retryButton: this.getElement(root, '#try-again'),
       exitButton: this.getElement(root, '#exit-test'),
       closeMirrorButton: this.getElement(root, '#close-mirror'),
@@ -210,7 +210,6 @@ export class UIManager {
           <p class="fullscreen-note">For best effect, play in fullscreen with headphones.</p>
           <div class="start-actions" aria-label="Start actions">
             <button id="begin-test" type="button">BEGIN TEST</button>
-            <button id="fullscreen-test" type="button" class="secondary">FULLSCREEN</button>
             <button id="privacy-note" type="button" class="secondary">PRIVACY NOTE</button>
             <button id="audio-test" type="button" class="secondary">AUDIO TEST</button>
           </div>
@@ -259,6 +258,7 @@ export class UIManager {
           <div id="diagnostics" class="diagnostics"></div>
         </div>
         <button id="exit-test" type="button" class="exit-button">EXIT TEST</button>
+        <button id="mute-audio" type="button" class="mute-button" aria-pressed="false">MUTE</button>
       </section>
 
       <section id="debug-overlay" class="debug-overlay hidden" aria-label="Debug overlay"></section>
