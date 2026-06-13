@@ -47,9 +47,14 @@ const CHOICES: DialogueChoice[] = [
 ]
 
 export class DialogueManager {
+  private readonly timeScale: number
   private selectedChoice: DialogueChoice | null = null
   private selectedAtMs = 0
   private wasDialoguePhase = false
+
+  public constructor(debugMode = false) {
+    this.timeScale = debugMode ? 0.4 : 1
+  }
 
   public update(phaseId: PhaseId, phaseElapsedMs: number): DialogueSnapshot {
     if (phaseId !== 'reflectionDialogue') {
@@ -67,7 +72,7 @@ export class DialogueManager {
       return this.getPostChoiceSnapshot(phaseElapsedMs)
     }
 
-    if (phaseElapsedMs >= 22_000) {
+    if (phaseElapsedMs >= this.time(22_000)) {
       return {
         active: true,
         lineId: 'why_copying',
@@ -79,7 +84,7 @@ export class DialogueManager {
       }
     }
 
-    if (phaseElapsedMs >= 10_000) {
+    if (phaseElapsedMs >= this.time(10_000)) {
       return {
         active: true,
         lineId: 'always_late',
@@ -130,7 +135,7 @@ export class DialogueManager {
 
     const elapsedSinceChoice = Math.max(0, phaseElapsedMs - this.selectedAtMs)
 
-    if (elapsedSinceChoice >= 18_000) {
+    if (elapsedSinceChoice >= this.time(18_000)) {
       return {
         active: true,
         lineId: 'stay_there',
@@ -138,11 +143,11 @@ export class DialogueManager {
         text: 'Stay there.',
         choices: [],
         selectedChoiceId: this.selectedChoice.id,
-        readyForExit: elapsedSinceChoice >= 24_000,
+        readyForExit: elapsedSinceChoice >= this.time(24_000),
       }
     }
 
-    if (elapsedSinceChoice >= 11_000) {
+    if (elapsedSinceChoice >= this.time(11_000)) {
       return {
         active: true,
         lineId: 'know_how',
@@ -154,7 +159,7 @@ export class DialogueManager {
       }
     }
 
-    if (elapsedSinceChoice >= 5_500) {
+    if (elapsedSinceChoice >= this.time(5_500)) {
       return {
         active: true,
         lineId: 'remain_visible',
@@ -175,5 +180,9 @@ export class DialogueManager {
       selectedChoiceId: this.selectedChoice.id,
       readyForExit: false,
     }
+  }
+
+  private time(ms: number): number {
+    return ms * this.timeScale
   }
 }

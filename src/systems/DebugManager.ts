@@ -1,5 +1,6 @@
 export type DebugSnapshot = {
   phase: string
+  activeEvent: string
   elapsedMs: number
   delayMs: number
   displayedLatencyMs: number
@@ -44,6 +45,7 @@ export class DebugManager {
     this.element.classList.remove('hidden')
     this.element.innerHTML = `
       <div><span>phase:</span> ${snapshot.phase}</div>
+      <div><span>activeEvent:</span> ${snapshot.activeEvent}</div>
       <div><span>elapsed:</span> ${(snapshot.elapsedMs / 1000).toFixed(1)}s</div>
       <div><span>delayMs:</span> ${Math.round(snapshot.delayMs)}</div>
       <div><span>displayedLatency:</span> ${Math.round(snapshot.displayedLatencyMs)}ms</div>

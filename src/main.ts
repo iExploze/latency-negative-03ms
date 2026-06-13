@@ -29,7 +29,7 @@ const camera = new CameraSystem(cameraVideo)
 const frameBuffer = new FrameBuffer(240, 180, 30_000, 10)
 const motionDetector = new MotionDetector()
 const phaseManager = new PhaseManager(debugMode)
-const dialogueManager = new DialogueManager()
+const dialogueManager = new DialogueManager(debugMode)
 const renderer = new EffectsRenderer(mirrorCanvas)
 const debugManager = new DebugManager(ui.elements.debugOverlay, new URLSearchParams(window.location.search))
 let animationFrameId = 0
@@ -96,7 +96,8 @@ ui.elements.fullscreenButton.addEventListener('click', () => {
 ui.elements.exitButton.addEventListener('click', () => exitTest())
 ui.elements.closeMirrorButton.addEventListener('click', () => closeMirror())
 ui.updateDialogue(dialogueManager.update('idle', 0), (choiceId) => selectDialogueChoice(choiceId))
-window.addEventListener('beforeunload', () => camera.stop())
+window.addEventListener('beforeunload', () => cleanupCameraOnly())
+window.addEventListener('pagehide', () => cleanupCameraOnly())
 
 async function beginTest(): Promise<void> {
   ui.closePrivacy()
@@ -209,6 +210,7 @@ function startLoop(): void {
     ui.updateDialogue(dialogueSnapshot, (choiceId) => selectDialogueChoice(choiceId))
     debugManager.update({
       phase: snapshot.id,
+      activeEvent: getActiveEventLabel(snapshot.id, mismatchEvent !== null, predictionEventActive, dialogueSnapshot.active),
       elapsedMs: snapshot.elapsedMs,
       delayMs: snapshot.delayMs,
       displayedLatencyMs: snapshot.displayedLatencyMs,
@@ -452,6 +454,40 @@ async function requestFullscreenBestEffort(): Promise<void> {
   } catch {
     // Fullscreen is a recommendation, not a gate.
   }
+}
+
+function cleanupCameraOnly(): void {
+  camera.stop()
+  frameBuffer.clear()
+}
+
+function getActiveEventLabel(
+  phaseId: string,
+  mismatchActive: boolean,
+  predictionActive: boolean,
+  dialogueActive: boolean,
+): string {
+  if (mismatchActive) {
+    return 'mismatch'
+  }
+
+  if (predictionActive) {
+    return 'prediction'
+  }
+
+  if (dialogueActive) {
+    return 'dialogue'
+  }
+
+  if (phaseId === 'reflectionExit') {
+    return 'transfer'
+  }
+
+  if (phaseId === 'return') {
+    return 'return'
+  }
+
+  return 'none'
 }
 
 function stopLoop(): void {

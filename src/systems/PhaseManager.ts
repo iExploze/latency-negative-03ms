@@ -445,7 +445,7 @@ export class PhaseManager {
     }
 
     if (elapsedMs >= this.scaledPromptTime(8_000)) {
-      return 'You’re back.'
+      return "You're back."
     }
 
     return 'Good.'

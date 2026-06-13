@@ -214,7 +214,7 @@ export class UIManager {
             <button id="privacy-note" type="button" class="secondary">PRIVACY NOTE</button>
             <button id="audio-test" type="button" class="secondary">AUDIO TEST</button>
           </div>
-          <p class="footer-note">Best experienced on desktop with a webcam and headphones.</p>
+          <p class="footer-note">Webcam frames remain local in this browser.</p>
         </div>
       </section>
 
