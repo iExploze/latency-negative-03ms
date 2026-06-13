@@ -3,7 +3,11 @@ export type DebugSnapshot = {
   elapsedMs: number
   delayMs: number
   bufferFrameCount: number
-  renderSource: 'live' | 'delayed'
+  renderSource: 'live' | 'delayed' | 'mismatch'
+  motionScore: number
+  isStill: boolean
+  stillnessMs: number
+  mismatchActive: boolean
 }
 
 export class DebugManager {
@@ -28,6 +32,10 @@ export class DebugManager {
       <div><span>delayMs:</span> ${Math.round(snapshot.delayMs)}</div>
       <div><span>bufferFrames:</span> ${snapshot.bufferFrameCount}</div>
       <div><span>renderSource:</span> ${snapshot.renderSource}</div>
+      <div><span>motionScore:</span> ${snapshot.motionScore.toFixed(2)}</div>
+      <div><span>isStill:</span> ${snapshot.isStill}</div>
+      <div><span>stillnessMs:</span> ${Math.round(snapshot.stillnessMs)}</div>
+      <div><span>mismatchActive:</span> ${snapshot.mismatchActive}</div>
     `
   }
 

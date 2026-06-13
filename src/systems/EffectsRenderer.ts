@@ -3,6 +3,8 @@ import type { PhaseSnapshot } from './PhaseManager'
 type RenderOptions = {
   source: CanvasImageSource | ImageData | null
   phase: PhaseSnapshot
+  timestampMs: number
+  mismatchActive: boolean
 }
 
 export class EffectsRenderer {
@@ -51,15 +53,20 @@ export class EffectsRenderer {
     this.context.clearRect(0, 0, width, height)
 
     if (options.source) {
-      this.drawMirroredSource(options.source, width, height)
+      this.drawMirroredSource(options.source, width, height, options)
     } else {
       this.drawStandby(width, height)
     }
 
-    this.drawClinicalOverlays(width, height, options.phase)
+    this.drawClinicalOverlays(width, height, options)
   }
 
-  private drawMirroredSource(source: CanvasImageSource | ImageData, width: number, height: number): void {
+  private drawMirroredSource(
+    source: CanvasImageSource | ImageData,
+    width: number,
+    height: number,
+    options: RenderOptions,
+  ): void {
     const drawableSource = source instanceof ImageData ? this.imageDataToCanvas(source) : source
     const sourceWidth = this.getSourceWidth(drawableSource)
     const sourceHeight = this.getSourceHeight(drawableSource)
@@ -67,8 +74,9 @@ export class EffectsRenderer {
     const canvasRatio = width / height
     const drawHeight = canvasRatio > videoRatio ? height : width / videoRatio
     const drawWidth = drawHeight * videoRatio
-    const x = (width - drawWidth) / 2
-    const y = (height - drawHeight) / 2
+    const jitter = this.getJitter(options)
+    const x = (width - drawWidth) / 2 + jitter.x
+    const y = (height - drawHeight) / 2 + jitter.y
 
     this.context.save()
     this.context.translate(width, 0)
@@ -112,18 +120,20 @@ export class EffectsRenderer {
     this.context.fillText('MIRROR OFFLINE', width / 2, height / 2)
   }
 
-  private drawClinicalOverlays(width: number, height: number, phase: PhaseSnapshot): void {
-    this.drawVignette(width, height)
-    this.drawScanlines(width, height)
+  private drawClinicalOverlays(width: number, height: number, options: RenderOptions): void {
+    this.drawVignette(width, height, options)
+    this.drawScanlines(width, height, options)
     this.drawNoise(width, height)
+    this.drawGlitchBlocks(width, height, options)
 
-    if (phase.id === 'terminated') {
+    if (options.phase.id === 'terminated') {
       this.context.fillStyle = 'rgba(3, 3, 4, 0.74)'
       this.context.fillRect(0, 0, width, height)
     }
   }
 
-  private drawVignette(width: number, height: number): void {
+  private drawVignette(width: number, height: number, options: RenderOptions): void {
+    const finalOpacity = options.phase.id === 'mismatch' ? 0.58 : 0.48
     const gradient = this.context.createRadialGradient(
       width / 2,
       height / 2,
@@ -133,13 +143,14 @@ export class EffectsRenderer {
       width * 0.72,
     )
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)')
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.48)')
+    gradient.addColorStop(1, `rgba(0, 0, 0, ${finalOpacity})`)
     this.context.fillStyle = gradient
     this.context.fillRect(0, 0, width, height)
   }
 
-  private drawScanlines(width: number, height: number): void {
-    this.context.fillStyle = 'rgba(255, 255, 255, 0.035)'
+  private drawScanlines(width: number, height: number, options: RenderOptions): void {
+    const opacity = options.phase.id === 'mismatch' ? 0.052 : 0.035
+    this.context.fillStyle = `rgba(255, 255, 255, ${opacity})`
 
     for (let y = 0; y < height; y += 6) {
       this.context.fillRect(0, y, width, 1)
@@ -155,6 +166,39 @@ export class EffectsRenderer {
       const x = Math.abs(Math.sin(this.animationSeed + i * 12.9898)) * width
       const y = Math.abs(Math.cos(this.animationSeed + i * 78.233)) * height
       this.context.fillRect(x, y, blockSize, blockSize)
+    }
+  }
+
+  private getJitter(options: RenderOptions): { x: number; y: number } {
+    if (options.phase.id !== 'mismatch') {
+      return { x: 0, y: 0 }
+    }
+
+    const intensity = options.mismatchActive ? 4 : 1.5
+    return {
+      x: Math.sin(options.timestampMs * 0.031) * intensity,
+      y: Math.cos(options.timestampMs * 0.027) * intensity * 0.5,
+    }
+  }
+
+  private drawGlitchBlocks(width: number, height: number, options: RenderOptions): void {
+    if (!options.mismatchActive) {
+      return
+    }
+
+    const pulse = Math.abs(Math.sin(options.timestampMs * 0.018))
+
+    if (pulse < 0.58) {
+      return
+    }
+
+    this.context.fillStyle = 'rgba(232, 232, 232, 0.08)'
+
+    for (let i = 0; i < 7; i += 1) {
+      const x = Math.abs(Math.sin(options.timestampMs * 0.01 + i * 19.19)) * width
+      const y = Math.abs(Math.cos(options.timestampMs * 0.012 + i * 11.73)) * height
+      const blockWidth = 12 + Math.abs(Math.sin(i + options.timestampMs)) * 58
+      this.context.fillRect(x, y, blockWidth, 2)
     }
   }
 }

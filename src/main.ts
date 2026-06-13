@@ -3,6 +3,7 @@ import { CameraSystem } from './systems/CameraSystem'
 import { DebugManager } from './systems/DebugManager'
 import { EffectsRenderer } from './systems/EffectsRenderer'
 import { FrameBuffer } from './systems/FrameBuffer'
+import { MotionDetector, type MotionState } from './systems/MotionDetector'
 import { PhaseManager } from './systems/PhaseManager'
 import { UIManager } from './systems/UIManager'
 
@@ -25,11 +26,26 @@ const mirrorCanvas = canvas
 const debugMode = new URLSearchParams(window.location.search).get('debug') === '1'
 const camera = new CameraSystem(cameraVideo)
 const frameBuffer = new FrameBuffer(240, 180, 30_000, 10)
+const motionDetector = new MotionDetector()
 const phaseManager = new PhaseManager(debugMode)
 const renderer = new EffectsRenderer(mirrorCanvas)
 const debugManager = new DebugManager(ui.elements.debugOverlay, new URLSearchParams(window.location.search))
 let animationFrameId = 0
 let hasStarted = false
+let mismatchEvent: MismatchEvent | null = null
+let lastMismatchAt = -Infinity
+
+type MismatchEvent = {
+  startedAt: number
+  durationMs: number
+  clipStartedAt: number
+  freezeUntil: number
+  frozenFrame: ImageData | null
+}
+
+const STILLNESS_TRIGGER_MS = 3500
+const MISMATCH_COOLDOWN_MS = 15000
+const MISMATCH_EVENT_DURATION_MS = 1800
 
 ui.showStart()
 
@@ -55,6 +71,9 @@ async function beginTest(): Promise<void> {
   try {
     await camera.requestAccess()
     frameBuffer.clear()
+    motionDetector.reset()
+    mismatchEvent = null
+    lastMismatchAt = -Infinity
     hasStarted = true
     phaseManager.start(performance.now())
     ui.showGame()
@@ -69,11 +88,15 @@ async function beginTest(): Promise<void> {
 function exitTest(): void {
   camera.stop()
   frameBuffer.clear()
+  motionDetector.reset()
+  mismatchEvent = null
   phaseManager.terminate(performance.now())
   hasStarted = false
   renderer.render({
     source: null,
     phase: phaseManager.getSnapshot(performance.now()),
+    timestampMs: performance.now(),
+    mismatchActive: false,
   })
   debugManager.clear()
   stopLoop()
@@ -91,15 +114,23 @@ function startLoop(): void {
       frameBuffer.maybeCapture(cameraVideo, nowMs)
     }
 
-    const delayedFrame = snapshot.id === 'delay'
+    const motionState = isCameraReady ? motionDetector.updateFromVideo(cameraVideo, nowMs) : motionDetector.getState()
+    updateMismatchEvent(snapshot.id, nowMs, motionState)
+
+    const mismatchFrame = mismatchEvent
+      ? getMismatchFrame(nowMs)
+      : null
+    const delayedFrame = snapshot.id === 'delay' || snapshot.id === 'mismatch'
       ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
       : null
-    const source = delayedFrame ?? (isCameraReady ? cameraVideo : null)
-    const renderSource = delayedFrame ? 'delayed' : 'live'
+    const source = mismatchFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
+    const renderSource = mismatchFrame ? 'mismatch' : delayedFrame ? 'delayed' : 'live'
 
     renderer.render({
       source,
       phase: snapshot,
+      timestampMs: nowMs,
+      mismatchActive: mismatchEvent !== null,
     })
     ui.updateHud(snapshot)
     debugManager.update({
@@ -108,6 +139,10 @@ function startLoop(): void {
       delayMs: snapshot.delayMs,
       bufferFrameCount: frameBuffer.getFrameCount(),
       renderSource,
+      motionScore: motionState.score,
+      isStill: motionState.isStill,
+      stillnessMs: motionState.stillnessMs,
+      mismatchActive: mismatchEvent !== null,
     })
 
     if (hasStarted) {
@@ -116,6 +151,41 @@ function startLoop(): void {
   }
 
   animationFrameId = requestAnimationFrame(tick)
+}
+
+function updateMismatchEvent(phaseId: string, nowMs: number, motionState: MotionState): void {
+  if (mismatchEvent && nowMs - mismatchEvent.startedAt >= mismatchEvent.durationMs) {
+    mismatchEvent = null
+  }
+
+  if (phaseId !== 'mismatch' || mismatchEvent || nowMs - lastMismatchAt < MISMATCH_COOLDOWN_MS) {
+    return
+  }
+
+  if (motionState.stillnessMs >= STILLNESS_TRIGGER_MS) {
+    const clipStartedAt = Math.max(0, nowMs - 18_000)
+    mismatchEvent = {
+      startedAt: nowMs,
+      durationMs: MISMATCH_EVENT_DURATION_MS,
+      clipStartedAt,
+      freezeUntil: nowMs + 260,
+      frozenFrame: frameBuffer.getFrameAtDelay(nowMs, 1500),
+    }
+    lastMismatchAt = nowMs
+  }
+}
+
+function getMismatchFrame(nowMs: number): ImageData | null {
+  if (!mismatchEvent) {
+    return null
+  }
+
+  if (nowMs <= mismatchEvent.freezeUntil) {
+    return mismatchEvent.frozenFrame
+  }
+
+  const eventElapsedMs = nowMs - mismatchEvent.startedAt
+  return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * 0.75)
 }
 
 function stopLoop(): void {

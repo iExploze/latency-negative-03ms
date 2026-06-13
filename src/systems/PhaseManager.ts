@@ -1,4 +1,4 @@
-export type PhaseId = 'idle' | 'calibration' | 'delay' | 'terminated'
+export type PhaseId = 'idle' | 'calibration' | 'delay' | 'mismatch' | 'terminated'
 
 export type DiagnosticReadouts = {
   latency: string
@@ -34,12 +34,14 @@ const calibrationPrompts: PromptCue[] = [
 export class PhaseManager {
   private readonly calibrationDurationMs: number
   private readonly delayRampDurationMs: number
+  private readonly delayDurationMs: number
   private phaseId: PhaseId = 'idle'
   private phaseStartedAt = 0
 
   public constructor(debugMode = false) {
     this.calibrationDurationMs = debugMode ? 10_000 : 60_000
     this.delayRampDurationMs = debugMode ? 20_000 : 75_000
+    this.delayDurationMs = debugMode ? 24_000 : 75_000
   }
 
   public start(nowMs: number): void {
@@ -90,6 +92,22 @@ export class PhaseManager {
       }
     }
 
+    if (this.phaseId === 'mismatch') {
+      return {
+        id: this.phaseId,
+        label: 'REFLECTION CHECK: UNSTABLE',
+        elapsedMs,
+        delayMs: 1500,
+        prompt: this.getMismatchPrompt(elapsedMs),
+        diagnostics: {
+          latency: 'unstable',
+          reflection: 'recalibrating',
+          subject: 'present',
+          sync: 'drifting',
+        },
+      }
+    }
+
     if (this.phaseId === 'terminated') {
       return {
         id: this.phaseId,
@@ -136,6 +154,12 @@ export class PhaseManager {
     if (this.phaseId === 'calibration' && nowMs - this.phaseStartedAt >= this.calibrationDurationMs) {
       this.phaseId = 'delay'
       this.phaseStartedAt = nowMs
+      return
+    }
+
+    if (this.phaseId === 'delay' && nowMs - this.phaseStartedAt >= this.delayDurationMs) {
+      this.phaseId = 'mismatch'
+      this.phaseStartedAt = nowMs
     }
   }
 
@@ -162,5 +186,29 @@ export class PhaseManager {
     }
 
     return 'Reflection stabilized.'
+  }
+
+  private getMismatchPrompt(elapsedMs: number): string {
+    if (elapsedMs >= 80_000) {
+      return 'Recalibrating subject order.'
+    }
+
+    if (elapsedMs >= 65_000) {
+      return 'Do not correct it.'
+    }
+
+    if (elapsedMs >= 45_000) {
+      return 'Reflection drift detected.'
+    }
+
+    if (elapsedMs >= 30_000) {
+      return 'Good.'
+    }
+
+    if (elapsedMs >= 15_000) {
+      return 'Hold still.'
+    }
+
+    return 'Please do not move.'
   }
 }
