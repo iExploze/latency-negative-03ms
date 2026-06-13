@@ -1,6 +1,8 @@
 import './style.css'
 import { CameraSystem } from './systems/CameraSystem'
+import { DebugManager } from './systems/DebugManager'
 import { EffectsRenderer } from './systems/EffectsRenderer'
+import { FrameBuffer } from './systems/FrameBuffer'
 import { PhaseManager } from './systems/PhaseManager'
 import { UIManager } from './systems/UIManager'
 
@@ -20,9 +22,12 @@ if (!video || !canvas) {
 
 const cameraVideo = video
 const mirrorCanvas = canvas
+const debugMode = new URLSearchParams(window.location.search).get('debug') === '1'
 const camera = new CameraSystem(cameraVideo)
-const phaseManager = new PhaseManager()
+const frameBuffer = new FrameBuffer(240, 180, 30_000, 10)
+const phaseManager = new PhaseManager(debugMode)
 const renderer = new EffectsRenderer(mirrorCanvas)
+const debugManager = new DebugManager(ui.elements.debugOverlay, new URLSearchParams(window.location.search))
 let animationFrameId = 0
 let hasStarted = false
 
@@ -49,6 +54,7 @@ async function beginTest(): Promise<void> {
 
   try {
     await camera.requestAccess()
+    frameBuffer.clear()
     hasStarted = true
     phaseManager.start(performance.now())
     ui.showGame()
@@ -62,13 +68,14 @@ async function beginTest(): Promise<void> {
 
 function exitTest(): void {
   camera.stop()
+  frameBuffer.clear()
   phaseManager.terminate(performance.now())
   hasStarted = false
   renderer.render({
-    video: cameraVideo,
+    source: null,
     phase: phaseManager.getSnapshot(performance.now()),
-    isCameraReady: false,
   })
+  debugManager.clear()
   stopLoop()
   ui.showStart()
 }
@@ -78,13 +85,30 @@ function startLoop(): void {
 
   const tick = (nowMs: number) => {
     const snapshot = phaseManager.getSnapshot(nowMs)
+    const isCameraReady = camera.isReady
+
+    if (isCameraReady) {
+      frameBuffer.maybeCapture(cameraVideo, nowMs)
+    }
+
+    const delayedFrame = snapshot.id === 'delay'
+      ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
+      : null
+    const source = delayedFrame ?? (isCameraReady ? cameraVideo : null)
+    const renderSource = delayedFrame ? 'delayed' : 'live'
 
     renderer.render({
-      video: cameraVideo,
+      source,
       phase: snapshot,
-      isCameraReady: camera.isReady,
     })
     ui.updateHud(snapshot)
+    debugManager.update({
+      phase: snapshot.id,
+      elapsedMs: snapshot.elapsedMs,
+      delayMs: snapshot.delayMs,
+      bufferFrameCount: frameBuffer.getFrameCount(),
+      renderSource,
+    })
 
     if (hasStarted) {
       animationFrameId = requestAnimationFrame(tick)

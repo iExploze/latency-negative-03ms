@@ -17,6 +17,7 @@ type UIElements = {
   phaseLabel: HTMLElement
   prompt: HTMLElement
   diagnostics: HTMLElement
+  debugOverlay: HTMLElement
   deniedTitle: HTMLElement
   deniedMessage: HTMLElement
 }
@@ -111,6 +112,7 @@ export class UIManager {
       phaseLabel: this.getElement(root, '#phase-label'),
       prompt: this.getElement(root, '#prompt'),
       diagnostics: this.getElement(root, '#diagnostics'),
+      debugOverlay: this.getElement(root, '#debug-overlay'),
       deniedTitle: this.getElement(root, '#denied-title'),
       deniedMessage: this.getElement(root, '#denied-message'),
     }
@@ -184,6 +186,8 @@ export class UIManager {
         </div>
         <button id="exit-test" type="button" class="exit-button">EXIT TEST</button>
       </section>
+
+      <section id="debug-overlay" class="debug-overlay hidden" aria-label="Debug overlay"></section>
     `
   }
 }

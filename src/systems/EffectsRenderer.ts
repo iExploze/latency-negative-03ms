@@ -1,14 +1,15 @@
 import type { PhaseSnapshot } from './PhaseManager'
 
 type RenderOptions = {
-  video: HTMLVideoElement
+  source: CanvasImageSource | ImageData | null
   phase: PhaseSnapshot
-  isCameraReady: boolean
 }
 
 export class EffectsRenderer {
   private readonly context: CanvasRenderingContext2D
   private readonly canvas: HTMLCanvasElement
+  private readonly frameCanvas: HTMLCanvasElement
+  private readonly frameContext: CanvasRenderingContext2D
   private animationSeed = Math.random() * 1000
 
   public constructor(canvas: HTMLCanvasElement) {
@@ -20,6 +21,15 @@ export class EffectsRenderer {
     }
 
     this.context = context
+    this.frameCanvas = document.createElement('canvas')
+
+    const frameContext = this.frameCanvas.getContext('2d')
+
+    if (!frameContext) {
+      throw new Error('Frame render canvas could not be initialized.')
+    }
+
+    this.frameContext = frameContext
   }
 
   public resize(): void {
@@ -40,8 +50,8 @@ export class EffectsRenderer {
     const { width, height } = this.canvas
     this.context.clearRect(0, 0, width, height)
 
-    if (options.isCameraReady) {
-      this.drawMirroredVideo(options.video, width, height)
+    if (options.source) {
+      this.drawMirroredSource(options.source, width, height)
     } else {
       this.drawStandby(width, height)
     }
@@ -49,8 +59,11 @@ export class EffectsRenderer {
     this.drawClinicalOverlays(width, height, options.phase)
   }
 
-  private drawMirroredVideo(video: HTMLVideoElement, width: number, height: number): void {
-    const videoRatio = video.videoWidth / video.videoHeight || 4 / 3
+  private drawMirroredSource(source: CanvasImageSource | ImageData, width: number, height: number): void {
+    const drawableSource = source instanceof ImageData ? this.imageDataToCanvas(source) : source
+    const sourceWidth = this.getSourceWidth(drawableSource)
+    const sourceHeight = this.getSourceHeight(drawableSource)
+    const videoRatio = sourceWidth / sourceHeight || 4 / 3
     const canvasRatio = width / height
     const drawHeight = canvasRatio > videoRatio ? height : width / videoRatio
     const drawWidth = drawHeight * videoRatio
@@ -60,8 +73,34 @@ export class EffectsRenderer {
     this.context.save()
     this.context.translate(width, 0)
     this.context.scale(-1, 1)
-    this.context.drawImage(video, x, y, drawWidth, drawHeight)
+    this.context.drawImage(drawableSource, x, y, drawWidth, drawHeight)
     this.context.restore()
+  }
+
+  private imageDataToCanvas(imageData: ImageData): HTMLCanvasElement {
+    if (this.frameCanvas.width !== imageData.width || this.frameCanvas.height !== imageData.height) {
+      this.frameCanvas.width = imageData.width
+      this.frameCanvas.height = imageData.height
+    }
+
+    this.frameContext.putImageData(imageData, 0, 0)
+    return this.frameCanvas
+  }
+
+  private getSourceWidth(source: CanvasImageSource): number {
+    if ('videoWidth' in source && source.videoWidth > 0) {
+      return source.videoWidth
+    }
+
+    return 'width' in source ? Number(source.width) : 640
+  }
+
+  private getSourceHeight(source: CanvasImageSource): number {
+    if ('videoHeight' in source && source.videoHeight > 0) {
+      return source.videoHeight
+    }
+
+    return 'height' in source ? Number(source.height) : 480
   }
 
   private drawStandby(width: number, height: number): void {

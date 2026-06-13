@@ -1,4 +1,4 @@
-export type PhaseId = 'idle' | 'calibration' | 'terminated'
+export type PhaseId = 'idle' | 'calibration' | 'delay' | 'terminated'
 
 export type DiagnosticReadouts = {
   latency: string
@@ -11,6 +11,7 @@ export type PhaseSnapshot = {
   id: PhaseId
   label: string
   elapsedMs: number
+  delayMs: number
   prompt: string
   diagnostics: DiagnosticReadouts
 }
@@ -31,8 +32,15 @@ const calibrationPrompts: PromptCue[] = [
 ]
 
 export class PhaseManager {
+  private readonly calibrationDurationMs: number
+  private readonly delayRampDurationMs: number
   private phaseId: PhaseId = 'idle'
   private phaseStartedAt = 0
+
+  public constructor(debugMode = false) {
+    this.calibrationDurationMs = debugMode ? 10_000 : 60_000
+    this.delayRampDurationMs = debugMode ? 20_000 : 75_000
+  }
 
   public start(nowMs: number): void {
     this.phaseId = 'calibration'
@@ -45,6 +53,7 @@ export class PhaseManager {
   }
 
   public getSnapshot(nowMs: number): PhaseSnapshot {
+    this.advance(nowMs)
     const elapsedMs = Math.max(0, nowMs - this.phaseStartedAt)
 
     if (this.phaseId === 'calibration') {
@@ -52,6 +61,7 @@ export class PhaseManager {
         id: this.phaseId,
         label: this.getCalibrationLabel(elapsedMs),
         elapsedMs,
+        delayMs: 0,
         prompt: this.getPrompt(elapsedMs),
         diagnostics: {
           latency: '034ms',
@@ -62,11 +72,30 @@ export class PhaseManager {
       }
     }
 
+    if (this.phaseId === 'delay') {
+      const delayMs = this.getDelayMs(elapsedMs)
+
+      return {
+        id: this.phaseId,
+        label: 'SYNC CHECK: ACTIVE',
+        elapsedMs,
+        delayMs,
+        prompt: this.getDelayPrompt(elapsedMs),
+        diagnostics: {
+          latency: `${Math.round(delayMs).toString().padStart(3, '0')}ms`,
+          reflection: 'stable',
+          subject: 'present',
+          sync: delayMs > 900 ? 'acceptable' : 'normal',
+        },
+      }
+    }
+
     if (this.phaseId === 'terminated') {
       return {
         id: this.phaseId,
         label: 'TEST TERMINATED',
         elapsedMs,
+        delayMs: 0,
         prompt: 'Test terminated.',
         diagnostics: {
           latency: '--',
@@ -81,6 +110,7 @@ export class PhaseManager {
       id: 'idle',
       label: 'STANDBY',
       elapsedMs: 0,
+      delayMs: 0,
       prompt: 'Awaiting mirror access.',
       diagnostics: {
         latency: '--',
@@ -92,7 +122,7 @@ export class PhaseManager {
   }
 
   private getCalibrationLabel(elapsedMs: number): string {
-    const progress = Math.min(100, Math.floor((elapsedMs / 60_000) * 100))
+    const progress = Math.min(100, Math.floor((elapsedMs / this.calibrationDurationMs) * 100))
     return `CALIBRATION: ${progress}%`
   }
 
@@ -100,5 +130,37 @@ export class PhaseManager {
     return calibrationPrompts.reduce((activePrompt, cue) => {
       return elapsedMs >= cue.atMs ? cue.text : activePrompt
     }, calibrationPrompts[0].text)
+  }
+
+  private advance(nowMs: number): void {
+    if (this.phaseId === 'calibration' && nowMs - this.phaseStartedAt >= this.calibrationDurationMs) {
+      this.phaseId = 'delay'
+      this.phaseStartedAt = nowMs
+    }
+  }
+
+  private getDelayMs(elapsedMs: number): number {
+    const progress = Math.min(1, elapsedMs / this.delayRampDurationMs)
+    return 300 + progress * 900
+  }
+
+  private getDelayPrompt(elapsedMs: number): string {
+    if (elapsedMs >= 65_000) {
+      return 'Minor latency detected.'
+    }
+
+    if (elapsedMs >= 50_000) {
+      return 'Please remain still.'
+    }
+
+    if (elapsedMs >= 35_000) {
+      return 'Lower your hand.'
+    }
+
+    if (elapsedMs >= 15_000) {
+      return 'Raise your right hand.'
+    }
+
+    return 'Reflection stabilized.'
   }
 }
