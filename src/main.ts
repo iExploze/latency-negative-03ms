@@ -51,6 +51,7 @@ type PredictionEvent = {
   clipStartedAt: number
   freezeUntil: number
   frozenFrame: ImageData | null
+  source: 'handClip' | 'movementBuffer'
 }
 
 const STILLNESS_TRIGGER_MS = 2400
@@ -59,10 +60,12 @@ const MISMATCH_EVENT_DURATION_MS = 1100
 const MISMATCH_FREEZE_MS = 140
 const MISMATCH_CLIP_LOOKBACK_MS = 14_000
 const MISMATCH_CLIP_SPEED = 1.55
-const PREDICTION_EVENT_DURATION_MS = 1250
-const PREDICTION_FREEZE_MS = 120
+const HAND_CLIP_NAME = 'calibrationHandRaise'
+const HAND_CLIP_MAX_FRAMES = 70
+const PREDICTION_EVENT_DURATION_MS = 1650
+const PREDICTION_FREEZE_MS = 180
 const PREDICTION_CLIP_LOOKBACK_MS = 16_000
-const PREDICTION_CLIP_SPEED = 1.75
+const PREDICTION_CLIP_SPEED = 1.9
 
 ui.showStart()
 
@@ -133,7 +136,11 @@ function startLoop(): void {
     const isCameraReady = camera.isReady
 
     if (isCameraReady) {
-      frameBuffer.maybeCapture(cameraVideo, nowMs)
+      const capturedFrame = frameBuffer.maybeCapture(cameraVideo, nowMs)
+
+      if (capturedFrame) {
+        captureCalibrationClips(snapshot.id, snapshot.elapsedMs, capturedFrame)
+      }
     }
 
     const motionState = isCameraReady ? motionDetector.updateFromVideo(cameraVideo, nowMs) : motionDetector.getState()
@@ -152,6 +159,7 @@ function startLoop(): void {
     const source = predictionFrame ?? mismatchFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
     const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : delayedFrame ? 'delayed' : 'live'
     const predictionEventActive = predictionEvent !== null
+    const liveState = getLiveState(snapshot.id, nowMs)
 
     renderer.render({
       source,
@@ -160,7 +168,7 @@ function startLoop(): void {
       mismatchActive: mismatchEvent !== null,
       predictionActive: predictionEventActive,
     })
-    ui.updateHud(snapshot, getLiveLabel(snapshot.id, nowMs))
+    ui.updateHud(snapshot, liveState.label)
     debugManager.update({
       phase: snapshot.id,
       elapsedMs: snapshot.elapsedMs,
@@ -174,6 +182,8 @@ function startLoop(): void {
       mismatchActive: mismatchEvent !== null,
       negativeLatencyActive: snapshot.id === 'negativeLatency',
       predictionEventActive,
+      predictionFootageSource: predictionEvent?.source ?? getAvailablePredictionSource(),
+      liveFlickerActive: liveState.isQuestion,
       stillnessTriggerMs: STILLNESS_TRIGGER_MS,
       mismatchDurationMs: MISMATCH_EVENT_DURATION_MS,
       jitterIntensityPx: renderer.getJitterIntensity(snapshot.id, mismatchEvent !== null || predictionEventActive),
@@ -187,6 +197,16 @@ function startLoop(): void {
   animationFrameId = requestAnimationFrame(tick)
 }
 
+function captureCalibrationClips(phaseId: string, phaseElapsedMs: number, frame: { timeMs: number; imageData: ImageData }): void {
+  if (phaseId !== 'calibration') {
+    return
+  }
+
+  if (phaseElapsedMs >= 30_000 && phaseElapsedMs <= 38_000) {
+    frameBuffer.addFrameToClip(HAND_CLIP_NAME, frame, HAND_CLIP_MAX_FRAMES)
+  }
+}
+
 function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: number): void {
   if (phaseId !== 'negativeLatency') {
     predictionEvent = null
@@ -198,13 +218,16 @@ function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: n
     predictionEvent = null
   }
 
-  const promptIsTurnCue = phaseElapsedMs >= (debugMode ? 10_000 : 25_000)
-  const promptHasAdvanced = phaseElapsedMs >= (debugMode ? 15_200 : 38_000)
+  const predictionCueAt = debugMode ? 3_200 : 8_000
+  const raisePromptAt = debugMode ? 4_800 : 12_000
+  const promptIsPredictionCue = phaseElapsedMs >= predictionCueAt
+  const promptHasAdvanced = phaseElapsedMs >= raisePromptAt
 
-  if (predictionTriggeredForPhase || predictionEvent || !promptIsTurnCue || promptHasAdvanced) {
+  if (predictionTriggeredForPhase || predictionEvent || !promptIsPredictionCue || promptHasAdvanced) {
     return
   }
 
+  const source = getAvailablePredictionSource()
   predictionTriggeredForPhase = true
   predictionEvent = {
     startedAt: nowMs,
@@ -212,6 +235,7 @@ function updatePredictionEvent(phaseId: string, phaseElapsedMs: number, nowMs: n
     clipStartedAt: Math.max(0, nowMs - PREDICTION_CLIP_LOOKBACK_MS),
     freezeUntil: nowMs + PREDICTION_FREEZE_MS,
     frozenFrame: frameBuffer.getFrameAtDelay(nowMs, 700),
+    source,
   }
 }
 
@@ -247,6 +271,13 @@ function getPredictionFrame(nowMs: number): ImageData | null {
   }
 
   const eventElapsedMs = nowMs - predictionEvent.startedAt
+  const activeDurationMs = Math.max(1, predictionEvent.durationMs - PREDICTION_FREEZE_MS)
+  const progress = Math.min(1, Math.max(0, (eventElapsedMs - PREDICTION_FREEZE_MS) / activeDurationMs))
+
+  if (predictionEvent.source === 'handClip') {
+    return frameBuffer.getClipFrameAtProgress(HAND_CLIP_NAME, progress)
+  }
+
   return frameBuffer.getNearestFrame(predictionEvent.clipStartedAt + eventElapsedMs * PREDICTION_CLIP_SPEED)
 }
 
@@ -263,13 +294,17 @@ function getMismatchFrame(nowMs: number): ImageData | null {
   return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * MISMATCH_CLIP_SPEED)
 }
 
-function getLiveLabel(phaseId: string, nowMs: number): string {
+function getAvailablePredictionSource(): 'handClip' | 'movementBuffer' {
+  return frameBuffer.getClipFrameCount(HAND_CLIP_NAME) >= 12 ? 'handClip' : 'movementBuffer'
+}
+
+function getLiveState(phaseId: string, nowMs: number): { label: string; isQuestion: boolean } {
   if (phaseId !== 'negativeLatency') {
-    return 'LIVE'
+    return { label: 'LIVE', isQuestion: false }
   }
 
-  const flicker = Math.sin(nowMs * 0.018) > 0.92 || Math.sin(nowMs * 0.041) > 0.96
-  return flicker ? 'LIVE?' : 'LIVE'
+  const flicker = Math.sin(nowMs * 0.011) > 0.72 || Math.sin(nowMs * 0.027) > 0.84
+  return { label: flicker ? 'LIVE?' : 'LIVE', isQuestion: flicker }
 }
 
 function stopLoop(): void {

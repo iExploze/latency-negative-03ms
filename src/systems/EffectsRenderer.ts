@@ -68,7 +68,7 @@ export class EffectsRenderer {
     }
 
     if (phaseId === 'negativeLatency') {
-      return eventActive ? 0.9 : 0.3
+      return eventActive ? 1.1 : 0.3
     }
 
     if (phaseId === 'delay') {
@@ -150,7 +150,7 @@ export class EffectsRenderer {
   }
 
   private drawVignette(width: number, height: number, options: RenderOptions): void {
-    const finalOpacity = options.phase.id === 'negativeLatency' ? 0.64 : options.phase.id === 'mismatch' ? 0.58 : 0.48
+    const finalOpacity = options.predictionActive ? 0.68 : options.phase.id === 'negativeLatency' ? 0.64 : options.phase.id === 'mismatch' ? 0.58 : 0.48
     const gradient = this.context.createRadialGradient(
       width / 2,
       height / 2,
@@ -166,7 +166,7 @@ export class EffectsRenderer {
   }
 
   private drawScanlines(width: number, height: number, options: RenderOptions): void {
-    const opacity = options.phase.id === 'negativeLatency' ? 0.064 : options.phase.id === 'mismatch' ? 0.052 : 0.035
+    const opacity = options.predictionActive ? 0.078 : options.phase.id === 'negativeLatency' ? 0.064 : options.phase.id === 'mismatch' ? 0.052 : 0.035
     this.context.fillStyle = `rgba(255, 255, 255, ${opacity})`
 
     for (let y = 0; y < height; y += 6) {

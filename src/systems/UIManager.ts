@@ -69,6 +69,7 @@ export class UIManager {
 
   public updateHud(snapshot: PhaseSnapshot, liveLabel = 'LIVE'): void {
     this.elements.liveLabel.textContent = snapshot.id === 'terminated' ? 'OFFLINE' : liveLabel
+    this.elements.liveLabel.classList.toggle('live-question', liveLabel === 'LIVE?')
     this.elements.timer.textContent = this.formatTimer(snapshot.elapsedMs)
     this.elements.phaseLabel.textContent = snapshot.label
     this.elements.prompt.textContent = snapshot.prompt

@@ -248,31 +248,27 @@ export class PhaseManager {
   }
 
   private getNegativeLatencyPrompt(elapsedMs: number): string {
-    if (elapsedMs >= this.scaledPromptTime(65_000)) {
+    if (elapsedMs >= this.scaledPromptTime(42_000)) {
       return 'Original unresolved.'
     }
 
-    if (elapsedMs >= this.scaledPromptTime(52_000)) {
-      return 'Subject moved late.'
-    }
-
-    if (elapsedMs >= this.scaledPromptTime(38_000)) {
+    if (elapsedMs >= this.scaledPromptTime(26_000)) {
       return 'Prediction error detected.'
     }
 
-    if (elapsedMs >= this.scaledPromptTime(25_000)) {
-      return 'Turn your head left.'
+    if (elapsedMs >= this.scaledPromptTime(15_000)) {
+      return 'Subject moved late.'
     }
 
     if (elapsedMs >= this.scaledPromptTime(12_000)) {
-      return 'Please stop following the reflection.'
+      return 'Raise your right hand.'
     }
 
     return 'Please follow the reflection.'
   }
 
   private getNegativeLatencyMs(elapsedMs: number): number {
-    const progress = Math.min(1, elapsedMs / this.scaledPromptTime(65_000))
+    const progress = Math.min(1, elapsedMs / this.scaledPromptTime(42_000))
     return -Math.round(3 + progress * 100)
   }
 

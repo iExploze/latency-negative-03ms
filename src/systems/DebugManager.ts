@@ -11,6 +11,8 @@ export type DebugSnapshot = {
   mismatchActive: boolean
   negativeLatencyActive: boolean
   predictionEventActive: boolean
+  predictionFootageSource: 'handClip' | 'movementBuffer'
+  liveFlickerActive: boolean
   stillnessTriggerMs: number
   mismatchDurationMs: number
   jitterIntensityPx: number
@@ -45,6 +47,8 @@ export class DebugManager {
       <div><span>mismatchActive:</span> ${snapshot.mismatchActive}</div>
       <div><span>negativeLatency:</span> ${snapshot.negativeLatencyActive}</div>
       <div><span>predictionActive:</span> ${snapshot.predictionEventActive}</div>
+      <div><span>predictionSource:</span> ${snapshot.predictionFootageSource}</div>
+      <div><span>liveFlicker:</span> ${snapshot.liveFlickerActive}</div>
       <div><span>stillTrigger:</span> ${snapshot.stillnessTriggerMs}ms</div>
       <div><span>mismatchDur:</span> ${snapshot.mismatchDurationMs}ms</div>
       <div><span>jitterPx:</span> ${snapshot.jitterIntensityPx.toFixed(2)}</div>

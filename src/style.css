@@ -242,10 +242,17 @@ h2 {
 .live-label {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 86px;
+  padding: 6px 9px;
+  border: 1px solid rgba(232, 232, 232, 0.12);
+  border-radius: 4px;
   color: var(--text);
-  font-size: 13px;
+  background: rgba(3, 3, 4, 0.54);
+  font-size: 18px;
   font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 18px rgba(232, 232, 232, 0.14);
 }
 
 .live-label::before {
@@ -255,6 +262,21 @@ h2 {
   border-radius: 999px;
   background: var(--danger);
   box-shadow: 0 0 14px rgba(184, 74, 74, 0.8);
+}
+
+.live-label.live-question {
+  color: #ffffff;
+  border-color: rgba(184, 74, 74, 0.72);
+  background: rgba(184, 74, 74, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(184, 74, 74, 0.2),
+    0 0 28px rgba(184, 74, 74, 0.42);
+  transform: translateX(3px) scale(1.08);
+}
+
+.live-label.live-question::before {
+  background: #ffffff;
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.82);
 }
 
 .timer,

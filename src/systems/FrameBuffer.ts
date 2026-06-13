@@ -10,6 +10,7 @@ export class FrameBuffer {
   private readonly captureCanvas: HTMLCanvasElement
   private readonly captureContext: CanvasRenderingContext2D
   private readonly frames: BufferedFrame[] = []
+  private readonly clips = new Map<string, BufferedFrame[]>()
   private readonly captureIntervalMs: number
   private readonly maxFrameCount: number
   private lastCaptureAt = 0
@@ -38,20 +39,23 @@ export class FrameBuffer {
     this.maxFrameCount = Math.ceil((maxDurationMs / 1000) * captureFps)
   }
 
-  public maybeCapture(source: CanvasImageSource, timestampMs: number): void {
+  public maybeCapture(source: CanvasImageSource, timestampMs: number): BufferedFrame | null {
     if (timestampMs - this.lastCaptureAt < this.captureIntervalMs) {
-      return
+      return null
     }
 
-    this.pushFrame(source, timestampMs)
+    const frame = this.pushFrame(source, timestampMs)
     this.lastCaptureAt = timestampMs
+    return frame
   }
 
-  public pushFrame(source: CanvasImageSource, timestampMs: number): void {
+  public pushFrame(source: CanvasImageSource, timestampMs: number): BufferedFrame {
     this.captureContext.drawImage(source, 0, 0, this.width, this.height)
     const imageData = this.captureContext.getImageData(0, 0, this.width, this.height)
-    this.frames.push({ timeMs: timestampMs, imageData })
+    const frame = { timeMs: timestampMs, imageData }
+    this.frames.push(frame)
     this.trimOldFrames(timestampMs)
+    return frame
   }
 
   public getFrameAtDelay(nowMs: number, delayMs: number): ImageData | null {
@@ -84,11 +88,38 @@ export class FrameBuffer {
 
   public clear(): void {
     this.frames.length = 0
+    this.clips.clear()
     this.lastCaptureAt = 0
   }
 
   public getFrameCount(): number {
     return this.frames.length
+  }
+
+  public addFrameToClip(clipName: string, frame: BufferedFrame, maxFrameCount: number): void {
+    const clip = this.clips.get(clipName) ?? []
+    clip.push(frame)
+
+    while (clip.length > maxFrameCount) {
+      clip.shift()
+    }
+
+    this.clips.set(clipName, clip)
+  }
+
+  public getClipFrameAtProgress(clipName: string, progress: number): ImageData | null {
+    const clip = this.clips.get(clipName)
+
+    if (!clip || clip.length === 0) {
+      return null
+    }
+
+    const frameIndex = Math.min(clip.length - 1, Math.max(0, Math.floor(progress * clip.length)))
+    return clip[frameIndex].imageData
+  }
+
+  public getClipFrameCount(clipName: string): number {
+    return this.clips.get(clipName)?.length ?? 0
   }
 
   private trimOldFrames(nowMs: number): void {
