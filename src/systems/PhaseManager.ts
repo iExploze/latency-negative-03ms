@@ -395,11 +395,11 @@ export class PhaseManager {
       return 'Prediction error detected.'
     }
 
-    if (elapsedMs >= this.scaledPromptTime(18_000)) {
+    if (elapsedMs >= this.scaledPromptTime(15_000)) {
       return 'Subject moved late.'
     }
 
-    if (elapsedMs >= this.scaledPromptTime(12_000)) {
+    if (elapsedMs >= this.scaledPromptTime(8_000)) {
       return 'Raise your left hand.'
     }
 

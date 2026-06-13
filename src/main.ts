@@ -77,6 +77,7 @@ const PREDICTION_CLIP_SPEED = 1.9
 ui.showStart()
 
 ui.elements.startButton.addEventListener('click', () => {
+  void requestFullscreenBestEffort()
   void beginTest()
 })
 
@@ -88,6 +89,9 @@ ui.elements.privacyButton.addEventListener('click', () => ui.showPrivacy())
 ui.elements.privacyCloseButton.addEventListener('click', () => ui.closePrivacy())
 ui.elements.privacyBackButton.addEventListener('click', () => ui.closePrivacy())
 ui.elements.audioTestButton.addEventListener('click', () => playAudioTest())
+ui.elements.fullscreenButton.addEventListener('click', () => {
+  void requestFullscreenBestEffort()
+})
 ui.elements.exitButton.addEventListener('click', () => exitTest())
 ui.elements.closeMirrorButton.addEventListener('click', () => closeMirror())
 ui.updateDialogue(dialogueManager.update('idle', 0), (choiceId) => selectDialogueChoice(choiceId))
@@ -181,11 +185,11 @@ function startLoop(): void {
     const delayedFrame = snapshot.id === 'delay' || snapshot.id === 'mismatch' || snapshot.id === 'reflectionDialogue'
       ? frameBuffer.getFrameAtDelay(nowMs, snapshot.delayMs)
       : null
-    const exitFrame = snapshot.id === 'reflectionExit'
-      ? frameBuffer.getFrameAtDelay(nowMs, Math.min(3600, 800 + snapshot.elapsedMs * 0.08))
+    const transferFrame = snapshot.id === 'reflectionExit'
+      ? getTransferFrame(snapshot.elapsedMs, nowMs)
       : null
-    const source = predictionFrame ?? mismatchFrame ?? exitFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
-    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : exitFrame || delayedFrame ? 'delayed' : 'live'
+    const source = predictionFrame ?? mismatchFrame ?? transferFrame ?? delayedFrame ?? (isCameraReady ? cameraVideo : null)
+    const renderSource = predictionFrame ? 'prediction' : mismatchFrame ? 'mismatch' : transferFrame ? 'transfer' : delayedFrame ? 'delayed' : 'live'
     const predictionEventActive = predictionEvent !== null
     const liveState = getLiveState(snapshot.id, snapshot.elapsedMs, nowMs)
 
@@ -261,8 +265,16 @@ function closeMirror(): void {
   stopLoop()
 
   window.setTimeout(() => {
+    window.close()
+  }, 900)
+
+  window.setTimeout(() => {
+    ui.showCloseFallback()
+  }, 1700)
+
+  window.setTimeout(() => {
     ui.showFinalEnd()
-  }, 1800)
+  }, 6200)
 }
 
 function selectDialogueChoice(choiceId: string): void {
@@ -370,6 +382,36 @@ function getMismatchFrame(nowMs: number): ImageData | null {
   return frameBuffer.getNearestFrame(mismatchEvent.clipStartedAt + eventElapsedMs * MISMATCH_CLIP_SPEED)
 }
 
+function getTransferFrame(phaseElapsedMs: number, nowMs: number): ImageData | null {
+  const intervalMs = getTransferSwitchIntervalMs(phaseElapsedMs)
+  const slot = Math.floor(phaseElapsedMs / intervalMs)
+
+  if (frameBuffer.getClipFrameCount(HAND_CLIP_NAME) >= 12 && slot % 5 === 0) {
+    const clipProgress = Math.abs(Math.sin(slot * 0.77 + phaseElapsedMs * 0.0012))
+    return frameBuffer.getClipFrameAtProgress(HAND_CLIP_NAME, clipProgress)
+  }
+
+  const hash = Math.abs(Math.sin(slot * 12.9898 + 78.233))
+  const secondaryHash = Math.abs(Math.cos(slot * 4.187 + 19.19))
+  const lookbackMs = 700 + hash * 25_000
+  const driftMs = (secondaryHash - 0.5) * 1100
+  return frameBuffer.getFrameAtDelay(nowMs, lookbackMs + driftMs)
+}
+
+function getTransferSwitchIntervalMs(phaseElapsedMs: number): number {
+  const transferProgress = Math.min(1, phaseElapsedMs / (debugMode ? 24_000 : 60_000))
+
+  if (transferProgress < 0.34) {
+    return 760 - transferProgress * 470
+  }
+
+  if (transferProgress < 0.72) {
+    return 390 - (transferProgress - 0.34) * 610
+  }
+
+  return 160 - (transferProgress - 0.72) * 285
+}
+
 function getAvailablePredictionSource(): PredictionFootageSource {
   return frameBuffer.getClipFrameCount(HAND_CLIP_NAME) >= 12
     ? 'oppositeHandFromRightHandClip'
@@ -388,6 +430,18 @@ function getLiveState(phaseId: string, phaseElapsedMs: number, nowMs: number): {
 
   const flicker = Math.sin(nowMs * 0.011) > 0.72 || Math.sin(nowMs * 0.027) > 0.84
   return { label: flicker ? 'LIVE?' : 'LIVE', isQuestion: flicker }
+}
+
+async function requestFullscreenBestEffort(): Promise<void> {
+  if (!document.fullscreenEnabled || document.fullscreenElement) {
+    return
+  }
+
+  try {
+    await document.documentElement.requestFullscreen()
+  } catch {
+    // Fullscreen is a recommendation, not a gate.
+  }
 }
 
 function stopLoop(): void {

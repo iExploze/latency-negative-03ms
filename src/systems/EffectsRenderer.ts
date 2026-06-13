@@ -98,7 +98,8 @@ export class EffectsRenderer {
     const sourceHeight = this.getSourceHeight(drawableSource)
     const videoRatio = sourceWidth / sourceHeight || 4 / 3
     const canvasRatio = width / height
-    const zoom = options.phase.id === 'reflectionExit' ? 1.04 : 1
+    const transferProgress = this.getTransferProgress(options)
+    const zoom = options.phase.id === 'reflectionExit' ? 1.04 + transferProgress * 0.035 : 1
     const drawHeight = (canvasRatio > videoRatio ? height : width / videoRatio) * zoom
     const drawWidth = drawHeight * videoRatio
     const jitter = this.getJitter(options)
@@ -163,8 +164,9 @@ export class EffectsRenderer {
   }
 
   private drawVignette(width: number, height: number, options: RenderOptions): void {
+    const transferProgress = this.getTransferProgress(options)
     const finalOpacity = options.phase.id === 'reflectionExit'
-      ? 0.82
+      ? 0.72 + transferProgress * 0.2
       : options.phase.id === 'reflectionDialogue'
       ? 0.72
       : options.predictionActive
@@ -189,8 +191,9 @@ export class EffectsRenderer {
   }
 
   private drawScanlines(width: number, height: number, options: RenderOptions): void {
+    const transferProgress = this.getTransferProgress(options)
     const opacity = options.phase.id === 'reflectionExit'
-      ? 0.098
+      ? 0.08 + transferProgress * 0.065
       : options.phase.id === 'reflectionDialogue'
       ? 0.074
       : options.predictionActive
@@ -244,19 +247,27 @@ export class EffectsRenderer {
       return
     }
 
-    const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive ? 0.024 : 0.018)))
+    const transferProgress = this.getTransferProgress(options)
+    const pulse = Math.abs(Math.sin(options.timestampMs * (options.predictionActive ? 0.024 : options.phase.id === 'reflectionExit' ? 0.018 + transferProgress * 0.026 : 0.018)))
 
-    if (pulse < (options.phase.id === 'reflectionExit' ? 0.55 : options.phase.id === 'reflectionDialogue' ? 0.82 : options.predictionActive ? 0.68 : 0.58)) {
+    if (pulse < (options.phase.id === 'reflectionExit' ? 0.62 - transferProgress * 0.32 : options.phase.id === 'reflectionDialogue' ? 0.82 : options.predictionActive ? 0.68 : 0.58)) {
       return
     }
 
-    this.context.fillStyle = options.predictionActive ? 'rgba(232, 232, 232, 0.11)' : 'rgba(232, 232, 232, 0.08)'
+    this.context.fillStyle = options.predictionActive
+      ? 'rgba(232, 232, 232, 0.11)'
+      : options.phase.id === 'reflectionExit'
+        ? `rgba(232, 232, 232, ${0.07 + transferProgress * 0.07})`
+        : 'rgba(232, 232, 232, 0.08)'
 
-    for (let i = 0; i < 7; i += 1) {
+    const blockCount = options.phase.id === 'reflectionExit' ? 5 + Math.floor(transferProgress * 7) : 7
+
+    for (let i = 0; i < blockCount; i += 1) {
       const x = Math.abs(Math.sin(options.timestampMs * 0.01 + i * 19.19)) * width
       const y = Math.abs(Math.cos(options.timestampMs * 0.012 + i * 11.73)) * height
-      const blockWidth = 12 + Math.abs(Math.sin(i + options.timestampMs)) * 58
-      this.context.fillRect(x, y, blockWidth, 2)
+      const blockWidth = 12 + Math.abs(Math.sin(i + options.timestampMs)) * (58 + transferProgress * 72)
+      const blockHeight = options.phase.id === 'reflectionExit' && i % 4 === 0 ? 4 : 2
+      this.context.fillRect(x, y, blockWidth, blockHeight)
     }
   }
 
@@ -267,7 +278,8 @@ export class EffectsRenderer {
 
     const prompt = options.phase.prompt
     const absenceActive = prompt === 'SUBJECT COUNT: 0' || prompt === 'REFLECTION RELEASED'
-    const shadowOpacity = absenceActive ? 0.76 : 0.32
+    const transferProgress = this.getTransferProgress(options)
+    const shadowOpacity = absenceActive ? 0.76 + transferProgress * 0.08 : 0.3 + transferProgress * 0.18
     const gradient = this.context.createRadialGradient(
       width / 2,
       height * 0.48,
@@ -287,5 +299,13 @@ export class EffectsRenderer {
       this.context.fillStyle = 'rgba(0, 0, 0, 0.42)'
       this.context.fillRect(0, 0, width, height)
     }
+  }
+
+  private getTransferProgress(options: RenderOptions): number {
+    if (options.phase.id !== 'reflectionExit') {
+      return 0
+    }
+
+    return Math.min(1, options.phase.elapsedMs / 60_000)
   }
 }

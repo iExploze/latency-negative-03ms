@@ -4,7 +4,7 @@ export type DebugSnapshot = {
   delayMs: number
   displayedLatencyMs: number
   bufferFrameCount: number
-  renderSource: 'live' | 'delayed' | 'mismatch' | 'prediction'
+  renderSource: 'live' | 'delayed' | 'mismatch' | 'prediction' | 'transfer'
   motionScore: number
   isStill: boolean
   stillnessMs: number

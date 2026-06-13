@@ -12,6 +12,7 @@ type UIElements = {
   privacyCloseButton: HTMLButtonElement
   privacyBackButton: HTMLButtonElement
   audioTestButton: HTMLButtonElement
+  fullscreenButton: HTMLButtonElement
   retryButton: HTMLButtonElement
   exitButton: HTMLButtonElement
   closeMirrorButton: HTMLButtonElement
@@ -93,6 +94,16 @@ export class UIManager {
     this.elements.closeMirrorButton.classList.add('hidden')
   }
 
+  public showCloseFallback(): void {
+    this.setScreen('final')
+    this.elements.finalLines.innerHTML = `
+      <div>You closed the wrong side.</div>
+      <div class="final-small">The tab did not close.</div>
+      <div class="final-small">Please close it yourself.</div>
+    `
+    this.elements.closeMirrorButton.classList.add('hidden')
+  }
+
   public showDenied(title: string, message: string): void {
     this.setScreen('denied')
     this.elements.deniedTitle.textContent = title
@@ -159,6 +170,7 @@ export class UIManager {
       privacyCloseButton: this.getElement(root, '#privacy-understood'),
       privacyBackButton: this.getElement(root, '#privacy-back'),
       audioTestButton: this.getElement(root, '#audio-test'),
+      fullscreenButton: this.getElement(root, '#fullscreen-test'),
       retryButton: this.getElement(root, '#try-again'),
       exitButton: this.getElement(root, '#exit-test'),
       closeMirrorButton: this.getElement(root, '#close-mirror'),
@@ -195,8 +207,10 @@ export class UIManager {
           <h1>Latency: -03ms</h1>
           <p class="subtitle">A mirror calibration experiment.</p>
           <p class="safety-note">Contains mild visual distortion and webcam-based horror.</p>
+          <p class="fullscreen-note">For best effect, play in fullscreen with headphones.</p>
           <div class="start-actions" aria-label="Start actions">
             <button id="begin-test" type="button">BEGIN TEST</button>
+            <button id="fullscreen-test" type="button" class="secondary">FULLSCREEN</button>
             <button id="privacy-note" type="button" class="secondary">PRIVACY NOTE</button>
             <button id="audio-test" type="button" class="secondary">AUDIO TEST</button>
           </div>
