@@ -255,11 +255,11 @@ export class PhaseManager {
       return 'Original unresolved.'
     }
 
-    if (elapsedMs >= this.scaledPromptTime(26_000)) {
+    if (elapsedMs >= this.scaledPromptTime(30_000)) {
       return 'Prediction error detected.'
     }
 
-    if (elapsedMs >= this.scaledPromptTime(15_000)) {
+    if (elapsedMs >= this.scaledPromptTime(18_000)) {
       return 'Subject moved late.'
     }
 
