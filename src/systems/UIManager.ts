@@ -30,10 +30,13 @@ type UIElements = {
 
 export class UIManager {
   public readonly elements: UIElements
+  private choiceHandler: ((choiceId: string) => void) | null = null
+  private renderedChoiceKey = ''
 
   public constructor(root: HTMLElement) {
     root.innerHTML = this.getMarkup()
     this.elements = this.queryElements(root)
+    this.elements.choices.addEventListener('click', (event) => this.handleChoiceClick(event))
   }
 
   public showStart(): void {
@@ -109,11 +112,18 @@ export class UIManager {
   public updateDialogue(snapshot: DialogueSnapshot, onChoice: (choiceId: string) => void): void {
     this.elements.dialogue.textContent = snapshot.text
     this.elements.dialogue.classList.toggle('hidden', !snapshot.active || snapshot.text.length === 0)
-    this.elements.choices.innerHTML = ''
+    this.choiceHandler = onChoice
     this.elements.choices.classList.toggle('hidden', snapshot.choices.length === 0)
+    const choiceKey = snapshot.choices.map((choice) => choice.id).join('|')
 
+    if (choiceKey === this.renderedChoiceKey) {
+      return
+    }
+
+    this.renderedChoiceKey = choiceKey
+    this.elements.choices.innerHTML = ''
     for (const choice of snapshot.choices) {
-      this.elements.choices.append(this.createChoiceButton(choice, onChoice))
+      this.elements.choices.append(this.createChoiceButton(choice))
     }
   }
 
@@ -248,12 +258,34 @@ export class UIManager {
     `
   }
 
-  private createChoiceButton(choice: DialogueChoice, onChoice: (choiceId: string) => void): HTMLButtonElement {
+  private createChoiceButton(choice: DialogueChoice): HTMLButtonElement {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'choice-button'
+    button.dataset.choiceId = choice.id
     button.textContent = choice.label
-    button.addEventListener('click', () => onChoice(choice.id))
     return button
+  }
+
+  private handleChoiceClick(event: MouseEvent): void {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>('[data-choice-id]')
+      : null
+
+    if (!target || !this.elements.choices.contains(target)) {
+      return
+    }
+
+    const choiceId = target.dataset.choiceId
+
+    if (!choiceId) {
+      return
+    }
+
+    for (const button of this.elements.choices.querySelectorAll<HTMLButtonElement>('button')) {
+      button.disabled = true
+    }
+
+    this.choiceHandler?.(choiceId)
   }
 }
